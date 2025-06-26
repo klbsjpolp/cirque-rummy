@@ -1,3 +1,4 @@
+
 import type { Config } from "tailwindcss";
 
 export default {
@@ -18,6 +19,11 @@ export default {
 			}
 		},
 		extend: {
+			fontFamily: {
+				'circus': ['Fredoka One', 'cursive'],
+				'creepy': ['Creepster', 'cursive'],
+				'horror': ['Nosifer', 'cursive'],
+			},
 			colors: {
 				border: 'hsl(var(--border))',
 				input: 'hsl(var(--input))',
@@ -61,7 +67,13 @@ export default {
 					'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
-				}
+				},
+				// Couleurs du thème cirque
+				'circus-red': '#DC143C',
+				'circus-gold': '#FFD700',
+				'circus-cream': '#FFF8DC',
+				'circus-navy': '#191970',
+				'circus-black': '#2C2C2C'
 			},
 			borderRadius: {
 				lg: 'var(--radius)',
@@ -84,11 +96,22 @@ export default {
 					to: {
 						height: '0'
 					}
+				},
+				'circus-spin': {
+					'0%': { transform: 'rotate(0deg)' },
+					'100%': { transform: 'rotate(360deg)' }
+				},
+				'card-flip': {
+					'0%': { transform: 'rotateY(0deg)' },
+					'50%': { transform: 'rotateY(90deg)' },
+					'100%': { transform: 'rotateY(0deg)' }
 				}
 			},
 			animation: {
 				'accordion-down': 'accordion-down 0.2s ease-out',
-				'accordion-up': 'accordion-up 0.2s ease-out'
+				'accordion-up': 'accordion-up 0.2s ease-out',
+				'circus-spin': 'circus-spin 3s linear infinite',
+				'card-flip': 'card-flip 0.6s ease-in-out'
 			}
 		}
 	},
