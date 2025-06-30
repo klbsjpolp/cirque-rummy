@@ -1,5 +1,6 @@
 
 import type { Config } from "tailwindcss";
+import tailwindcssAnimate from "tailwindcss-animate";
 
 export default {
 	darkMode: ["class"],
@@ -105,15 +106,20 @@ export default {
 					'0%': { transform: 'rotateY(0deg)' },
 					'50%': { transform: 'rotateY(90deg)' },
 					'100%': { transform: 'rotateY(0deg)' }
+				},
+				'gentle-pulse': {
+					'0%, 100%': { opacity: '1' },
+					'50%': { opacity: '0.85' }
 				}
 			},
 			animation: {
 				'accordion-down': 'accordion-down 0.2s ease-out',
 				'accordion-up': 'accordion-up 0.2s ease-out',
 				'circus-spin': 'circus-spin 3s linear infinite',
-				'card-flip': 'card-flip 0.6s ease-in-out'
+				'card-flip': 'card-flip 0.6s ease-in-out',
+				'gentle-pulse': 'gentle-pulse 3s ease-in-out infinite'
 			}
 		}
 	},
-	plugins: [require("tailwindcss-animate")],
+	plugins: [tailwindcssAnimate],
 } satisfies Config;
