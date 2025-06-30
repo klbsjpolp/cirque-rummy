@@ -5,7 +5,7 @@ import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
-  // Set base path for GitHub Pages - replace 'cirque-rummy' with your actual repo name
+  // Set base path for GitHub Pages
   base: process.env.NODE_ENV === 'production' ? '/cirque-rummy/' : '/',
   server: {
     host: "::",
