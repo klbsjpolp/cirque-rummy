@@ -123,7 +123,7 @@ Le premier joueur à réussir **7 missions** remporte la partie. Chaque joueur p
 
 ### Prérequis
 - Node.js (recommandé via [nvm](https://github.com/nvm-sh/nvm#installing-and-updating))
-- npm
+- pnpm 10+ (via [Corepack](https://nodejs.org/api/corepack.html) : `corepack enable`)
 
 ### Installation
 ```bash
@@ -134,19 +134,19 @@ git clone <URL_DU_REPO>
 cd cirque-rummy
 
 # Installer les dépendances
-npm install
+pnpm install
 
 # Lancer le serveur de développement
-npm run dev
+pnpm dev
 ```
 
 ### Scripts disponibles
 ```bash
-npm run dev          # Serveur de développement
-npm run build        # Build de production
-npm run build:dev    # Build de développement
-npm run lint         # Vérification du code
-npm run preview      # Aperçu du build
+pnpm dev             # Serveur de développement
+pnpm build           # Build de production
+pnpm build:dev       # Build de développement
+pnpm lint            # Vérification du code
+pnpm preview         # Aperçu du build
 ```
 
 ## 🏗️ Architecture technique
@@ -208,14 +208,14 @@ src/
 
 ### Tests
 ```bash
+# Suite de tests vitest
+pnpm test
+
 # Tester la compilation TypeScript
-npx tsc --noEmit
+pnpm exec tsc --noEmit
 
 # Tester le build
-npm run build
-
-# Script de test personnalisé
-node test-game.js
+pnpm build
 ```
 
 ### Contribution

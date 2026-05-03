@@ -1,32 +1,499 @@
-
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useGameState } from '../hooks/useGameState';
 import { MISSIONS } from '../data/missions';
-import Card from './Card';
-import { Button } from '@/components/ui/button';
-import { Card as UICard, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card as CardType, Player } from '../types/game';
+import { isJokerCard } from '../utils/cardUtils';
+import Card, { CardBack } from './Card';
+import MissionTarget from './MissionTarget';
 
+// ── Palette ────────────────────────────────────────────────
+const C = {
+  bg: '#1a0d12',
+  bgTop: '#251319',
+  surface: '#f6efe0',
+  ink: '#1a1a1a',
+  inkSoft: '#4a4038',
+  red: '#b8242c',
+  redDark: '#8a1a20',
+  gold: '#d4a84a',
+  goldBright: '#e8c14a',
+  teal: '#2d8f6b',
+  muted: '#7a6e5e',
+};
+
+const RANK_ORDER = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+const SUIT_ORDER: Array<'spades' | 'hearts' | 'clubs' | 'diamonds'> = ['spades', 'hearts', 'clubs', 'diamonds'];
+
+type SortMode = 'none' | 'rank' | 'suit';
+type TurnStep = 'draw' | 'play' | 'discard';
+
+function sortHand(hand: CardType[], mode: SortMode): CardType[] {
+  if (mode === 'none') return hand;
+  const copy = [...hand];
+  copy.sort((a, b) => {
+    if (isJokerCard(a)) return 1;
+    if (isJokerCard(b)) return -1;
+    if (mode === 'rank') {
+      return (
+        RANK_ORDER.indexOf(a.value) - RANK_ORDER.indexOf(b.value) ||
+        SUIT_ORDER.indexOf(a.suit) - SUIT_ORDER.indexOf(b.suit)
+      );
+    }
+    return (
+      SUIT_ORDER.indexOf(a.suit) - SUIT_ORDER.indexOf(b.suit) ||
+      RANK_ORDER.indexOf(a.value) - RANK_ORDER.indexOf(b.value)
+    );
+  });
+  return copy;
+}
+
+function highlightForMission(hand: CardType[], missionId: number): string[] {
+  const mission = MISSIONS.find(m => m.id === missionId);
+  if (!mission) return [];
+  const spec = mission.requirements.specificRequirements;
+  const ids: string[] = [];
+  for (const c of hand) {
+    if (isJokerCard(c)) {
+      ids.push(c.id);
+      continue;
+    }
+    if (spec === 'hearts_7_8_9_10' && c.suit === 'hearts' && ['7', '8', '9', '10'].includes(c.value)) ids.push(c.id);
+    else if (spec === 'red_sequence_5' && (c.suit === 'hearts' || c.suit === 'diamonds')) ids.push(c.id);
+    else if (spec === 'red_even_sequence_6' && (c.suit === 'hearts' || c.suit === 'diamonds') && ['2','4','6','8','10','Q'].includes(c.value)) ids.push(c.id);
+    else if (spec === '7_same_suit' && c.suit === 'spades') ids.push(c.id);
+    else if (spec === 'same_suit') ids.push(c.id);
+    else if (spec === 'seven_odd_cards' && ['A','3','5','7','9','J','K'].includes(c.value)) ids.push(c.id);
+  }
+  return ids;
+}
+
+// ── Atoms ──────────────────────────────────────────────────
+const Pill: React.FC<{ children: React.ReactNode; tone?: 'default' | 'gold' | 'red'; size?: 'sm' | 'md' }> = ({
+  children,
+  tone = 'default',
+  size = 'sm',
+}) => {
+  const tones = {
+    default: { bg: 'rgba(255,255,255,0.08)', fg: 'rgba(255,255,255,0.85)', bd: 'rgba(255,255,255,0.12)' },
+    gold:    { bg: 'rgba(212,168,74,0.18)', fg: '#e8c14a', bd: 'rgba(212,168,74,0.45)' },
+    red:     { bg: 'rgba(184,36,44,0.2)', fg: '#ff9d9d', bd: 'rgba(184,36,44,0.45)' },
+  };
+  const t = tones[tone];
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      padding: size === 'sm' ? '3px 8px' : '5px 12px',
+      borderRadius: 999, fontSize: size === 'sm' ? 11 : 13, fontWeight: 600,
+      background: t.bg, color: t.fg, border: `1px solid ${t.bd}`,
+      letterSpacing: 0.2, whiteSpace: 'nowrap', flexShrink: 0,
+    }}>{children}</span>
+  );
+};
+
+const Btn: React.FC<{
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  primary?: boolean;
+  tone?: 'red' | 'teal' | 'ghost';
+  size?: 'sm' | 'md' | 'lg';
+  style?: React.CSSProperties;
+}> = ({ children, onClick, disabled, primary, tone, size = 'md', style: extraStyle = {} }) => {
+  const sizes = { sm: { p: '8px 12px', fs: 13, h: 36 }, md: { p: '12px 16px', fs: 15, h: 48 }, lg: { p: '14px 18px', fs: 16, h: 56 } };
+  const s = sizes[size];
+  let bg = '#2e2026', fg = '#f3e7c7', bd = 'rgba(255,255,255,0.08)';
+  if (primary)         { bg = C.gold; fg = C.ink; bd = '#a07f2a'; }
+  if (tone === 'red')  { bg = C.red; fg = '#fff'; bd = C.redDark; }
+  if (tone === 'teal') { bg = C.teal; fg = '#fff'; bd = '#1f6a4e'; }
+  if (tone === 'ghost'){ bg = 'transparent'; fg = 'rgba(255,255,255,0.75)'; bd = 'rgba(255,255,255,0.18)'; }
+  return (
+    <button onClick={onClick} disabled={disabled} style={{
+      padding: s.p, minHeight: s.h, borderRadius: 10,
+      background: bg, color: fg, border: `1px solid ${bd}`,
+      fontSize: s.fs, fontWeight: 700, letterSpacing: 0.3,
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      opacity: disabled ? 0.45 : 1, fontFamily: 'inherit',
+      boxShadow: primary ? '0 4px 12px rgba(212,168,74,0.3)' : 'none',
+      transition: 'all 0.15s', ...extraStyle,
+    }}>{children}</button>
+  );
+};
+
+// ── Turn step indicator ────────────────────────────────────
+const TurnStepBar: React.FC<{ step: TurnStep }> = ({ step }) => {
+  const steps: { id: TurnStep; label: string }[] = [
+    { id: 'draw', label: 'Piocher' },
+    { id: 'play', label: 'Jouer' },
+    { id: 'discard', label: 'Défausser' },
+  ];
+  const idx = steps.findIndex(s => s.id === step);
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+      {steps.map((s, i) => {
+        const active = i === idx;
+        const done = i < idx;
+        return (
+          <React.Fragment key={s.id}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '6px 10px', borderRadius: 999,
+              background: active ? C.gold : done ? 'rgba(212,168,74,0.15)' : 'rgba(255,255,255,0.06)',
+              color: active ? C.ink : done ? C.gold : 'rgba(255,255,255,0.5)',
+              fontSize: 12, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase',
+              border: active ? '1px solid #a07f2a' : '1px solid rgba(255,255,255,0.08)',
+              transition: 'all 0.2s',
+            }}>
+              <span style={{
+                width: 18, height: 18, borderRadius: 999,
+                background: active ? C.ink : done ? C.gold : 'rgba(255,255,255,0.12)',
+                color: active ? C.gold : done ? C.ink : 'rgba(255,255,255,0.5)',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 11, fontWeight: 800,
+              }}>{done ? '✓' : i + 1}</span>
+              <span>{s.label}</span>
+            </div>
+            {i < steps.length - 1 && (
+              <div style={{ flex: '0 0 8px', height: 2, background: done ? C.gold : 'rgba(255,255,255,0.1)', borderRadius: 1 }} />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+};
+
+// ── Player status ─────────────────────────────────────────
+const PlayerStatus: React.FC<{
+  name: string; isCurrent: boolean; isOpponent?: boolean;
+  cards: number; missionsDone: number; isAI?: boolean;
+}> = ({ name, isCurrent, isOpponent, cards, missionsDone, isAI }) => {
+  const icon = isOpponent ? (isAI ? '🤖' : '♛') : '♔';
+  return (
+    <div style={{
+      flex: 1, padding: '10px 12px', borderRadius: 12,
+      background: isCurrent ? 'rgba(212,168,74,0.14)' : 'rgba(255,255,255,0.04)',
+      border: isCurrent ? `1px solid ${C.gold}` : '1px solid rgba(255,255,255,0.08)',
+      display: 'flex', flexDirection: 'column', gap: 6,
+      transition: 'all 0.2s', minWidth: 0,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <div style={{
+            width: 28, height: 28, borderRadius: 999,
+            background: isCurrent ? C.gold : 'rgba(255,255,255,0.1)',
+            color: isCurrent ? C.ink : 'rgba(255,255,255,0.85)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0,
+          }}>{icon}</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#fff', letterSpacing: 0.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
+        </div>
+        {isCurrent && <Pill tone="gold">À toi</Pill>}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'rgba(255,255,255,0.7)' }}>
+          <span style={{ fontWeight: 700, color: '#fff', fontSize: 15 }}>{cards}</span>
+          <span>cartes</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+          {Array.from({ length: 7 }).map((_, i) => (
+            <div key={i} style={{
+              width: 8, height: 8, borderRadius: 2,
+              background: i < missionsDone ? C.gold : 'rgba(255,255,255,0.12)',
+              transform: 'rotate(45deg)',
+            }} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Mission panel ──────────────────────────────────────────
+const MissionPanel: React.FC<{ player: Player }> = ({ player }) => {
+  const mission = MISSIONS.find(m => m.id === player.currentMission);
+  if (!mission) return null;
+  return (
+    <div style={{
+      background: C.surface, borderRadius: 14, padding: '14px 16px',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 0 0 1px rgba(180,140,60,0.25)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{
+            width: 24, height: 24, borderRadius: 6, background: C.red, color: C.surface,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 13,
+          }}>{mission.id}</div>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.2, textTransform: 'uppercase', color: C.red }}>
+            {player.completedMissions.includes(mission.id) ? 'Mission accomplie' : 'Mission en cours'}
+          </div>
+        </div>
+        <div style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>
+          {player.completedMissions.length}/7 missions
+        </div>
+      </div>
+      <div style={{ fontSize: 17, fontWeight: 700, color: C.ink, lineHeight: 1.25, marginBottom: 10, fontFamily: 'Georgia, serif' }}>
+        {mission.title}
+      </div>
+      <div style={{
+        padding: '10px 12px', borderRadius: 8, background: 'rgba(0,0,0,0.035)',
+        border: '1px dashed rgba(0,0,0,0.12)', marginBottom: 8,
+      }}>
+        <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: C.muted, marginBottom: 6 }}>
+          Forme à réussir
+        </div>
+        <MissionTarget mission={mission} />
+      </div>
+      <div style={{ fontSize: 12, color: C.inkSoft, lineHeight: 1.4 }}>{mission.description}</div>
+    </div>
+  );
+};
+
+// ── Deck + discard ─────────────────────────────────────────
+const DeckArea: React.FC<{
+  deckCount: number;
+  topDiscard: CardType | null;
+  canDraw: boolean;
+  onDrawDeck: () => void;
+  onDrawDiscard: () => void;
+}> = ({ deckCount, topDiscard, canDraw, onDrawDeck, onDrawDiscard }) => (
+  <div style={{ display: 'flex', gap: 14, alignItems: 'center', justifyContent: 'center', padding: '8px 0' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+      <div onClick={canDraw && deckCount > 0 ? onDrawDeck : undefined} style={{
+        position: 'relative',
+        cursor: canDraw && deckCount > 0 ? 'pointer' : 'default',
+        filter: canDraw ? 'none' : 'grayscale(0.4) brightness(0.7)',
+      }}>
+        <div style={{ position: 'absolute', top: 3, left: 3 }}><CardBack /></div>
+        <div style={{ position: 'absolute', top: 1.5, left: 1.5 }}><CardBack /></div>
+        <div style={{ position: 'relative' }}><CardBack /></div>
+        <div style={{
+          position: 'absolute', bottom: -8, right: -6, background: C.ink, color: C.gold,
+          fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 999,
+          border: `1px solid ${C.gold}`,
+        }}>{deckCount}</div>
+      </div>
+      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.55)' }}>Pioche</div>
+    </div>
+
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+      <div onClick={canDraw && topDiscard ? onDrawDiscard : undefined} style={{
+        width: 60, height: 86, borderRadius: 8,
+        background: topDiscard ? 'transparent' : 'rgba(255,255,255,0.04)',
+        border: topDiscard ? 'none' : '1.5px dashed rgba(255,255,255,0.18)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: canDraw && topDiscard ? 'pointer' : 'default',
+      }}>
+        {topDiscard
+          ? <Card card={topDiscard} />
+          : <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: 1 }}>vide</div>
+        }
+      </div>
+      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.55)' }}>Défausse</div>
+    </div>
+  </div>
+);
+
+// ── Hand ────────────────────────────────────────────────────
+const Hand: React.FC<{
+  cards: CardType[];
+  selected: string[];
+  onToggle: (id: string) => void;
+  sortMode: SortMode;
+  onSort: (m: SortMode) => void;
+  highlightIds: string[];
+  compact: boolean;
+}> = ({ cards, selected, onToggle, sortMode, onSort, highlightIds, compact }) => {
+  const sorted = useMemo(() => sortHand(cards, sortMode), [cards, sortMode]);
+  const cardW = compact ? 48 : 60;
+  const cardSize = compact ? 'small' : 'medium';
+  const handWidth = compact ? 320 : 440;
+  const overlap = cards.length * cardW > handWidth
+    ? Math.max(-30, -(cardW - handWidth / cards.length))
+    : 0;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px' }}>
+        <div style={{ fontSize: 10, letterSpacing: 1, fontWeight: 700, color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase' }}>
+          Votre main · {cards.length}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 10, letterSpacing: 1, fontWeight: 700, color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase' }}>Trier</span>
+          <div style={{ display: 'flex', gap: 4, padding: 2, background: 'rgba(255,255,255,0.06)', borderRadius: 8 }}>
+            {([
+              { k: 'none' as const, label: 'Manuel' },
+              { k: 'rank' as const, label: 'A→K' },
+              { k: 'suit' as const, label: '♠♥♣♦' },
+            ]).map(({ k, label }) => (
+              <button key={k} onClick={() => onSort(k)} style={{
+                padding: '4px 10px', fontSize: 11, fontWeight: 700, letterSpacing: 0.5,
+                borderRadius: 6, border: 'none',
+                background: sortMode === k ? C.gold : 'transparent',
+                color: sortMode === k ? C.ink : 'rgba(255,255,255,0.75)',
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}>{label}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{
+        display: 'flex', justifyContent: 'center', alignItems: 'flex-end',
+        minHeight: compact ? 96 : 116, padding: '14px 4px 8px',
+        background: 'rgba(0,0,0,0.25)', borderRadius: 12,
+        border: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden',
+      }}>
+        <div style={{ display: 'flex', position: 'relative' }}>
+          {sorted.map((c, i) => (
+            <div key={c.id} style={{ marginLeft: i === 0 ? 0 : overlap, zIndex: selected.includes(c.id) ? 50 : i }}>
+              <Card
+                card={c}
+                size={cardSize}
+                isSelected={selected.includes(c.id)}
+                highlighted={highlightIds.includes(c.id)}
+                onClick={() => onToggle(c.id)}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Table combos ───────────────────────────────────────────
+const TableCombos: React.FC<{ player: Player; canExtend: boolean; onExtend: (comboId: string) => void; selectedCount: number }> = ({
+  player, canExtend, onExtend, selectedCount,
+}) => {
+  if (!player.combinations.length) return null;
+  return (
+    <div style={{
+      background: 'rgba(45,143,107,0.12)', border: '1px solid rgba(45,143,107,0.35)',
+      borderRadius: 12, padding: '10px 12px',
+    }}>
+      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: '#7edcb6', marginBottom: 8 }}>
+        Numéros posés · {player.combinations.length}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {player.combinations.map((c) => (
+          <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{
+              fontSize: 9, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase',
+              padding: '2px 6px', borderRadius: 4,
+              background: c.type === 'group' ? 'rgba(212,168,74,0.25)' : 'rgba(45,143,107,0.3)',
+              color: c.type === 'group' ? '#e8c14a' : '#7edcb6',
+              minWidth: 54, textAlign: 'center',
+            }}>{c.type === 'group' ? 'Groupe' : 'Suite'}</div>
+            <div style={{ display: 'flex' }}>
+              {c.cards.map((card, j) => (
+                <div key={card.id} style={{ marginLeft: j === 0 ? 0 : -18 }}>
+                  <Card card={card} size="small" />
+                </div>
+              ))}
+            </div>
+            {canExtend && selectedCount > 0 && (
+              <Btn size="sm" tone="teal" onClick={() => onExtend(c.id)}>
+                + Étendre ({selectedCount})
+              </Btn>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ── Action bar ─────────────────────────────────────────────
+const ActionBar: React.FC<{
+  step: TurnStep;
+  selectedCount: number;
+  missionDone: boolean;
+  onPlay: () => void;
+  onDiscard: () => void;
+  onClear: () => void;
+}> = ({ step, selectedCount, missionDone, onPlay, onDiscard, onClear }) => {
+  const canPlay = selectedCount >= 3 && step !== 'draw';
+  const canDiscard = selectedCount === 1 && step !== 'draw';
+  const primaryLabel = step === 'discard'
+    ? 'Défausser cette carte'
+    : missionDone ? 'Poser groupe' : 'Présenter mission';
+  const primaryAction = step === 'discard' ? onDiscard : onPlay;
+  const primaryEnabled = step === 'discard' ? canDiscard : canPlay;
+
+  return (
+    <div style={{
+      background: C.bgTop, borderTop: '1px solid rgba(255,255,255,0.08)',
+      padding: '10px 12px 14px',
+      display: 'flex', flexDirection: 'column', gap: 8,
+      boxShadow: '0 -8px 24px rgba(0,0,0,0.3)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 22 }}>
+        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>
+          {selectedCount === 0 ? (
+            step === 'draw' ? 'Piochez une carte pour commencer'
+              : step === 'discard' ? 'Sélectionnez 1 carte à défausser'
+              : 'Sélectionnez 3 cartes ou plus, ou 1 pour défausser'
+          ) : (
+            <>
+              <span style={{ color: C.gold, fontWeight: 700 }}>{selectedCount}</span>
+              <span> carte{selectedCount > 1 ? 's' : ''} sélectionnée{selectedCount > 1 ? 's' : ''}</span>
+            </>
+          )}
+        </div>
+        {selectedCount > 0 && (
+          <button onClick={onClear} style={{
+            background: 'none', border: 'none', color: 'rgba(255,255,255,0.55)',
+            fontSize: 12, cursor: 'pointer', padding: 4, fontFamily: 'inherit',
+          }}>✕ Annuler</button>
+        )}
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {step !== 'draw' && selectedCount === 1 && (
+          <Btn onClick={onDiscard} tone="red" style={{ flex: 1 }}>Défausser</Btn>
+        )}
+        <Btn onClick={primaryAction} disabled={!primaryEnabled} primary style={{ flex: 1 }}>
+          {primaryLabel}
+        </Btn>
+      </div>
+    </div>
+  );
+};
+
+// ── Main GameBoard ────────────────────────────────────────
 const GameBoard: React.FC = () => {
-  const { gameState, drawCard, discardCard, presentMissionCards, layEndOfRoundCombinations, addToExistingCombination, newGame, resetGame, reorderCards } = useGameState();
+  const {
+    gameState, drawCard, discardCard, presentMissionCards,
+    layEndOfRoundCombinations, addToExistingCombination, newGame, resetGame,
+  } = useGameState();
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
+  const [sortMode, setSortMode] = useState<SortMode>('rank');
   const [showHistory, setShowHistory] = useState(false);
-  const [draggedCardIndex, setDraggedCardIndex] = useState<number | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-  const [draggedCardSource, setDraggedCardSource] = useState<'hand' | 'discard' | 'deck' | null>(null);
-  const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
-  const [dropZoneActive, setDropZoneActive] = useState<'hand' | 'discard' | null>(null);
 
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-
-  // En mode IA, toujours afficher la main du joueur 1 (humain)
   const displayedPlayer = gameState.gameMode === 'ai' ? gameState.players[0] : currentPlayer;
+  const opponent = gameState.players.find(p => p.id !== displayedPlayer.id)!;
+  const isDisplayedTurn = currentPlayer.id === displayedPlayer.id && !gameState.isAITurn;
 
-  const handleCardClick = (cardId: string) => {
-    setSelectedCardIds(prev => 
-      prev.includes(cardId) 
-        ? prev.filter(id => id !== cardId)
-        : [...prev, cardId]
-    );
+  const step: TurnStep = !gameState.hasDrawnThisTurn ? 'draw' : 'play';
+
+  const compact = typeof window !== 'undefined' && window.innerWidth < 600;
+
+  const highlightIds = useMemo(
+    () => highlightForMission(displayedPlayer.hand, displayedPlayer.currentMission),
+    [displayedPlayer.hand, displayedPlayer.currentMission]
+  );
+
+  const toggleCard = (id: string) => setSelectedCardIds(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
+  const clearSelection = () => setSelectedCardIds([]);
+
+  const handlePlay = () => {
+    if (selectedCardIds.length < 3) return;
+    if (currentPlayer.isCurrentMissionCompleted()) {
+      layEndOfRoundCombinations(selectedCardIds);
+    } else {
+      presentMissionCards(selectedCardIds);
+    }
+    setSelectedCardIds([]);
   };
 
   const handleDiscard = () => {
@@ -36,710 +503,191 @@ const GameBoard: React.FC = () => {
     }
   };
 
-
-  const clearSelection = () => {
+  const handleExtend = (comboId: string) => {
+    if (!selectedCardIds.length) return;
+    addToExistingCombination(selectedCardIds, comboId, displayedPlayer.id);
     setSelectedCardIds([]);
   };
 
-  const handlePresentMission = () => {
-    if (selectedCardIds.length >= 3) {
-      const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-
-      if (!currentPlayer.isCurrentMissionCompleted()) {
-        // Mission actuelle pas encore complétée - validation de mission
-        presentMissionCards(selectedCardIds);
-      } else {
-        // Mission actuelle déjà complétée - poser de nouveaux groupes uniquement
-        layEndOfRoundCombinations(selectedCardIds);
-      }
-      setSelectedCardIds([]);
-    }
-  };
-
-  // Drag and drop handlers
-  const handleDragStart = (e: React.DragEvent, cardIndex: number, source: 'hand' | 'discard' | 'deck' = 'hand', cardId?: string) => {
-    setDraggedCardIndex(cardIndex);
-    setDraggedCardSource(source);
-    setDraggedCardId(cardId || null);
-
-    // If dragging from deck, immediately draw the card to reveal it
-    if (source === 'deck' && gameState.deck.length > 0) {
-      drawCard(false);
-      // Get the card that will be drawn (it's the last card in the deck)
-      const drawnCard = gameState.deck[gameState.deck.length - 1];
-      setDraggedCardId(drawnCard.id);
-    }
-
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/html', ''); // Required for Firefox
-  };
-
-  const handleDragOver = (e: React.DragEvent, cardIndex?: number, dropZone?: 'hand' | 'discard') => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-
-    if (dropZone) {
-      setDropZoneActive(dropZone);
-    } else if (cardIndex !== undefined) {
-      setDragOverIndex(cardIndex);
-    }
-  };
-
-  const handleDragLeave = () => {
-    setDragOverIndex(null);
-    setDropZoneActive(null);
-  };
-
-  const handleDrop = (e: React.DragEvent, dropIndex?: number, dropZone?: 'hand' | 'discard') => {
-    e.preventDefault();
-
-    if (draggedCardSource === 'hand' && dropZone === 'discard' && draggedCardId) {
-      // Drag from hand to discard pile
-      discardCard(draggedCardId);
-    } else if (draggedCardSource === 'discard' && dropZone === 'hand') {
-      // Drag from discard pile to hand
-      drawCard(true);
-    } else if (draggedCardSource === 'deck' && dropZone === 'hand') {
-      // Drag from deck to hand - card was already drawn in handleDragStart
-      // No need to draw again, card is already in hand
-    } else if (draggedCardSource === 'deck' && !dropZone) {
-      // Drag from deck but dropped in invalid location - card is already in hand at the end
-      // This is the desired behavior: card goes to last place in hand
-    } else if (draggedCardIndex !== null && dropIndex !== undefined && draggedCardIndex !== dropIndex && draggedCardSource === 'hand') {
-      // Reorder cards within hand
-      reorderCards(draggedCardIndex, dropIndex);
-    }
-
-    // Reset all drag states
-    setDraggedCardIndex(null);
-    setDragOverIndex(null);
-    setDraggedCardSource(null);
-    setDraggedCardId(null);
-    setDropZoneActive(null);
-  };
-
-  const handleDragEnd = () => {
-    setDraggedCardIndex(null);
-    setDragOverIndex(null);
-    setDraggedCardSource(null);
-    setDraggedCardId(null);
-    setDropZoneActive(null);
-  };
+  const topDiscard = gameState.discardPile.length > 0
+    ? gameState.discardPile[gameState.discardPile.length - 1]
+    : null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-900 via-red-800 to-black text-white p-4">
-      {/* Header avec style cirque vintage */}
-      <div className="text-center mb-8 relative">
-        {/* Titre principal avec police cirque */}
-        <h1 className="font-circus text-5xl md:text-7xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-circus-gold via-yellow-300 to-circus-gold mb-3 drop-shadow-2xl relative z-10">
-          🎪 CIRQUE RUMMY 🎪
-        </h1>
-
-        {/* Sous-titre avec style affiche vintage */}
-        <div className="relative">
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-circus-red to-transparent h-px top-1/2 transform -translate-y-1/2"></div>
-          <div className="text-xl md:text-2xl text-circus-cream font-semibold bg-gradient-to-br from-red-900 to-black px-6 py-2 rounded-full border-2 border-circus-gold shadow-lg relative z-10">
-            ⭐ Cirque des cartes mystérieuses ⭐
+    <div style={{
+      minHeight: '100vh',
+      background: `radial-gradient(120% 80% at 50% 0%, ${C.bgTop} 0%, ${C.bg} 60%)`,
+      color: '#fff',
+      fontFamily: '-apple-system, "SF Pro Display", "Helvetica Neue", system-ui, sans-serif',
+      display: 'flex', flexDirection: 'column',
+    }}>
+      {/* Header */}
+      <div style={{
+        padding: compact ? '10px 12px 8px' : '12px 20px 10px',
+        background: C.bgTop, borderBottom: '1px solid rgba(255,255,255,0.06)',
+        display: 'flex', flexDirection: 'column', gap: 10, flexShrink: 0,
+        position: 'sticky', top: 0, zIndex: 30,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{
+              width: 28, height: 28, borderRadius: 6,
+              background: `linear-gradient(135deg, ${C.red}, ${C.redDark})`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: C.gold, fontFamily: 'Georgia, serif', fontSize: 16, fontWeight: 700,
+              boxShadow: 'inset 0 0 0 1px rgba(212,168,74,0.4)',
+            }}>★</div>
+            <div>
+              <div style={{
+                fontFamily: 'Georgia, "Times New Roman", serif', fontSize: 16, fontWeight: 700,
+                color: C.gold, letterSpacing: 1, lineHeight: 1,
+              }}>CIRQUE RUMMY</div>
+              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.45)', letterSpacing: 1.5, textTransform: 'uppercase', marginTop: 2 }}>
+                {gameState.gameMode === 'ai' ? 'Contre l\'automate' : 'Duel'}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={() => setShowHistory(v => !v)} style={{
+              background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.85)',
+              border: '1px solid rgba(255,255,255,0.12)', borderRadius: 999,
+              padding: '3px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+            }}>📜 Journal</button>
           </div>
         </div>
 
-        {/* Rideaux décoratifs */}
-        <div className="absolute left-0 top-0 text-6xl text-circus-red opacity-70 transform rotate-[-30deg]">🎭</div>
-        <div className="absolute right-0 top-0 text-6xl text-circus-red opacity-70 transform rotate-[30deg]">🎭</div>
-      </div>
+        <TurnStepBar step={step} />
 
-      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Colonne gauche - Missions */}
-        <div className="lg:col-span-1">
-          <UICard className="bg-gradient-to-br from-circus-cream via-amber-50 to-circus-cream border-4 border-circus-gold shadow-2xl relative overflow-hidden">
-            {/* Cadre décoratif doré */}
-            <div className="absolute inset-0 border-8 border-double border-circus-gold opacity-50 rounded-lg"></div>
-            <div className="absolute top-2 left-2 w-4 h-4 bg-circus-gold rounded-full"></div>
-            <div className="absolute top-2 right-2 w-4 h-4 bg-circus-gold rounded-full"></div>
-            <div className="absolute bottom-2 left-2 w-4 h-4 bg-circus-gold rounded-full"></div>
-            <div className="absolute bottom-2 right-2 w-4 h-4 bg-circus-gold rounded-full"></div>
-
-            <CardHeader className="relative z-10">
-              <CardTitle className="text-circus-red text-center font-circus text-2xl">
-                🎯 Mission du cirque 🎪
-              </CardTitle>
-              <div className="text-center text-sm text-circus-navy font-semibold">
-                ✨ Spectacle à accomplir #{(() => {
-                  // En mode IA, afficher la mission du joueur 1 (humain)
-                  // En mode normal, afficher la mission du joueur actuel
-                  const missionPlayer = gameState.gameMode === 'ai' ? gameState.players[0] : currentPlayer;
-                  const mission = MISSIONS.find(m => m.id === missionPlayer.currentMission);
-                  return mission ? mission.id .toString(): '';
-                })()} ✨
-              </div>
-              {/* Afficher la mission en cours */}
-              {(() => {
-                // En mode IA, afficher la mission du joueur 1 (humain)
-                // En mode normal, afficher la mission du joueur actuel
-                const missionPlayer = gameState.gameMode === 'ai' ? gameState.players[0] : currentPlayer;
-                const mission = MISSIONS.find(m => m.id === missionPlayer.currentMission);
-
-                return mission ? (
-                  <>
-                    <div className="text-center mb-2">
-                      <span className="text-2xl">{mission.icon}</span>
-                    </div>
-                    <h5 className="font-bold text-circus-navy text-center mb-2">
-                      {mission.title}
-                    </h5>
-                    <p className="text-sm text-circus-black text-center">
-                      {mission.description}
-                    </p>
-                  </>
-                ) : null;
-              })()}
-            </CardHeader>
-          </UICard>
-
-          {/* Turn Status Indicator */}
-          {!gameState.isGameOver && !gameState.isAITurn && (
-            <div className="mt-4 p-3 bg-gradient-to-br from-circus-gold via-yellow-200 to-circus-gold border-2 border-circus-red rounded-lg text-center">
-              <div className="text-circus-black font-circus text-sm font-bold">
-                {!gameState.hasDrawnThisTurn ? (
-                  <>🎯 ÉTAPE 1: Piochez une carte pour commencer votre tour</>
-                ) : gameState.mustDiscardToEndTurn ? (
-                  <>🎪 ÉTAPE 3: Défaussez une carte pour terminer votre tour</>
-                ) : (
-                  <>✨ ÉTAPE 2: Jouez vos cartes (optionnel) puis défaussez</>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Actions - Boutons style cirque */}
-          <div className="mt-4 space-y-3">
-            <Button 
-              onClick={() => drawCard(false)} 
-              className="w-full bg-gradient-to-br from-circus-navy via-blue-700 to-circus-navy hover:from-blue-600 hover:to-blue-800 border-2 border-circus-gold text-circus-cream font-circus text-lg py-3 shadow-xl transform transition-all duration-300 hover:scale-105 hover:shadow-2xl relative overflow-hidden"
-              disabled={gameState.isGameOver || gameState.isAITurn || gameState.cardsDrawnThisTurn >= 1}
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-circus-gold to-transparent opacity-20"></div>
-              <span className="relative z-10">🎩 Piocher du Chapeau Magique</span>
-            </Button>
-            <Button 
-              onClick={() => drawCard(true)} 
-              className="w-full bg-gradient-to-br from-green-700 via-emerald-600 to-green-800 hover:from-green-600 hover:to-emerald-700 border-2 border-circus-gold text-circus-cream font-circus text-lg py-3 shadow-xl transform transition-all duration-300 hover:scale-105 hover:shadow-2xl relative overflow-hidden"
-              disabled={gameState.discardPile.length === 0 || gameState.isGameOver || gameState.isAITurn || gameState.cardsDrawnThisTurn >= 1}
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-circus-gold to-transparent opacity-20"></div>
-              <span className="relative z-10">🗑️ Récupérer de la Défausse</span>
-            </Button>
-
-            {/* Combination controls - Style numéros de cirque */}
-            <div className="border-t-4 border-circus-gold pt-4 mt-4 bg-gradient-to-br from-circus-black via-gray-800 to-circus-black rounded-lg p-3">
-              <div className="text-center text-circus-gold font-circus text-sm mb-3">
-                ✨ Préparer un Numéro ✨
-              </div>
-
-              <Button 
-                onClick={handlePresentMission} 
-                disabled={selectedCardIds.length < 3 || gameState.isGameOver || gameState.isAITurn || !gameState.hasDrawnThisTurn}
-                className="w-full bg-gradient-to-br from-purple-700 via-purple-600 to-purple-800 hover:from-purple-600 hover:to-purple-700 border-2 border-circus-gold text-circus-cream font-circus text-lg py-3 mb-3 shadow-xl transform transition-all duration-300 hover:scale-105 relative overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-circus-gold to-transparent opacity-20"></div>
-                <span className="relative z-10">
-                  {(() => {
-                    const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-
-                    return currentPlayer.isCurrentMissionCompleted()
-                      ? `🎪 Poser Groupes (${selectedCardIds.length} cartes)`
-                      : `🪄 Présenter Mission (${selectedCardIds.length} cartes)`;
-                  })()}
-                </span>
-              </Button>
-
-              <Button 
-                onClick={clearSelection} 
-                disabled={selectedCardIds.length === 0 || gameState.isAITurn}
-                className="w-full bg-gradient-to-br from-gray-600 to-gray-700 hover:from-gray-500 hover:to-gray-600 border-2 border-circus-navy text-circus-cream font-circus py-2 mb-3 shadow-lg transform transition-all duration-300 hover:scale-105 disabled:opacity-50"
-              >
-                ❌ Annuler Sélection
-              </Button>
-            </div>
-
-            <Button 
-              onClick={handleDiscard} 
-              disabled={selectedCardIds.length !== 1 || gameState.isGameOver || gameState.isAITurn || !gameState.hasDrawnThisTurn}
-              className="w-full bg-gradient-to-br from-circus-red via-red-600 to-red-800 hover:from-red-600 hover:to-red-700 border-2 border-circus-gold text-circus-cream font-circus text-lg py-3 shadow-xl transform transition-all duration-300 hover:scale-105 hover:shadow-2xl relative overflow-hidden disabled:opacity-50"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-circus-gold to-transparent opacity-20"></div>
-              <span className="relative z-10">
-                🗑️ Défausser ({selectedCardIds.length === 1 ? '1 carte' : 'sélectionnez 1 carte'})
-                {gameState.mustDiscardToEndTurn && ' - Obligatoire pour finir le tour'}
-              </span>
-            </Button>
-          </div>
-        </div>
-
-        {/* Colonne centrale - Plateau de jeu */}
-        <div className="lg:col-span-2">
-          {/* Panneaux Joueurs - Style pancartes de foire */}
-          <div className="grid grid-cols-2 gap-4 mb-6">
-            {/* Joueur 1 */}
-            <UICard className={`border-4 relative overflow-hidden transform transition-all duration-300 ${
-              gameState.currentPlayerIndex === 0 
-                ? 'border-circus-gold bg-gradient-to-br from-circus-cream via-yellow-100 to-circus-cream shadow-2xl scale-105 animate-gentle-pulse' 
-                : 'border-circus-navy bg-gradient-to-br from-gray-100 via-slate-100 to-gray-100 shadow-lg'
-            }`}>
-              {/* Décoration de pancarte */}
-              <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-circus-red via-circus-gold to-circus-red"></div>
-              <div className="absolute bottom-0 left-0 w-full h-2 bg-gradient-to-r from-circus-red via-circus-gold to-circus-red"></div>
-
-              <CardContent className="p-4 relative z-10">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-3xl">🎩</div>
-                  {gameState.currentPlayerIndex === 0 && (
-                    <div className="text-2xl animate-bounce">🎭</div>
-                  )}
-                </div>
-                <h3 className="font-circus text-lg text-circus-red text-center mb-2">
-                  {gameState.players[0].name}
-                </h3>
-
-                {/* Cartes restantes avec icônes */}
-                <div className="flex items-center justify-center gap-1 mb-2">
-                  <span className="text-xs font-semibold text-circus-navy">Cartes:</span>
-                  <div className="flex items-center">
-                    {Array.from({ length: gameState.players[0].hand.length }, (_, i) => (
-                      <span key={i} className="text-blue-600 text-sm">🃏</span>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Missions avec icônes de cibles */}
-                <div className="flex items-center justify-center gap-1">
-                  <span className="text-xs font-semibold text-circus-navy">Missions:</span>
-                  <div className="flex items-center">
-                    {Array.from({ length: 7 }, (_, i) => (
-                      <span 
-                        key={i} 
-                        className={gameState.players[0].completedMissions.length > i ? "text-xs" : "grayscale opacity-50 text-xs"}
-                      >
-                        🎯
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-            </UICard>
-
-            {/* Joueur 2 */}
-            <UICard className={`border-4 relative overflow-hidden transform transition-all duration-300 ${
-              gameState.currentPlayerIndex === 1 
-                ? 'border-circus-gold bg-gradient-to-br from-circus-cream via-yellow-100 to-circus-cream shadow-2xl scale-105 animate-gentle-pulse' 
-                : 'border-circus-navy bg-gradient-to-br from-gray-100 via-slate-100 to-gray-100 shadow-lg'
-            }`}>
-              {/* Décoration de pancarte */}
-              <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-circus-red via-circus-gold to-circus-red"></div>
-              <div className="absolute bottom-0 left-0 w-full h-2 bg-gradient-to-r from-circus-red via-circus-gold to-circus-red"></div>
-
-              <CardContent className="p-4 relative z-10">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-3xl">{gameState.gameMode === 'ai' ? '🤖' : '🪄'}</div>
-                  {gameState.currentPlayerIndex === 1 && (
-                    <div className="text-2xl animate-bounce">🎭</div>
-                  )}
-                </div>
-                <h3 className="font-circus text-lg text-circus-red text-center mb-2">
-                  {gameState.players[1].name}
-                </h3>
-
-                {/* Cartes restantes avec icônes */}
-                <div className="flex items-center justify-center gap-1 mb-2">
-                  <span className="text-xs font-semibold text-circus-navy">Cartes:</span>
-                  <div className="flex items-center">
-                    {Array.from({ length: gameState.players[1].hand.length }, (_, i) => (
-                      <span key={i} className="text-blue-600 text-sm">🃏</span>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Missions avec icônes de cibles */}
-                <div className="flex items-center justify-center gap-1">
-                  <span className="text-xs font-semibold text-circus-navy">Missions:</span>
-                  <div className="flex items-center gap-1">
-                    {Array.from({ length: 7 }, (_, i) => (
-                      <span 
-                        key={i} 
-                        className={gameState.players[1].completedMissions.length > i ? "text-xs" : "grayscale opacity-50 text-xs"}
-                      >
-                        🎯
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-            </UICard>
-          </div>
-
-          {/* Chapeau et défausse - Style caisses anciennes */}
-          <div className="flex justify-center gap-12 mb-6">
-            {/* Chapeau - Caisse mystérieuse */}
-            <div className="text-center group">
-              <h3 className="text-circus-gold font-circus text-lg mb-3 flex items-center justify-center gap-2">
-                🎩 Chapeau Magique 🎩
-              </h3>
-              <div className="relative">
-                {/* Caisse 3D */}
-                <div 
-                  className="w-20 h-28 bg-gradient-to-br from-amber-800 via-amber-700 to-amber-900 border-4 border-circus-gold rounded-lg flex items-center justify-center relative overflow-hidden shadow-2xl transform transition-all duration-300 hover:scale-110 hover:rotate-3 cursor-move"
-                  draggable={!gameState.isGameOver && !gameState.isAITurn && gameState.deck.length > 0}
-                  onDragStart={(e) => handleDragStart(e, 0, 'deck')}
-                  onDragEnd={handleDragEnd}
-                >
-                  {/* Texture bois */}
-                  <div className="absolute inset-0 bg-gradient-to-br from-transparent via-amber-600 to-transparent opacity-30"></div>
-
-                  {/* Clous décoratifs */}
-                  <div className="absolute top-2 left-2 w-1 h-1 bg-circus-black rounded-full"></div>
-                  <div className="absolute top-2 right-2 w-1 h-1 bg-circus-black rounded-full"></div>
-                  <div className="absolute bottom-2 left-2 w-1 h-1 bg-circus-black rounded-full"></div>
-                  <div className="absolute bottom-2 right-2 w-1 h-1 bg-circus-black rounded-full"></div>
-
-                  {/* Contenu */}
-                  <div className="text-center relative z-10">
-                    <div className="text-2xl mb-1 animate-gentle-pulse">🎴</div>
-                    <span className="text-circus-cream text-sm font-bold bg-circus-black bg-opacity-50 px-2 py-1 rounded">
-                      {gameState.deck.length}
-                    </span>
-                  </div>
-
-                  {/* Effet de brillance */}
-                  <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-circus-gold to-transparent opacity-20 group-hover:animate-gentle-pulse"></div>
-                </div>
-
-                {/* Ombre 3D */}
-                <div className="absolute top-2 left-2 w-20 h-28 bg-circus-black opacity-30 rounded-lg -z-10"></div>
-              </div>
-            </div>
-
-            {/* Défausse - Caisse ouverte */}
-            <div className="text-center group">
-              <h3 className="text-circus-gold font-circus text-lg mb-3 flex items-center justify-center gap-2">
-                🗑️ Défausse du Cirque 🗑️
-              </h3>
-              <div 
-                className={`relative ${dropZoneActive === 'discard' ? 'ring-4 ring-circus-gold animate-pulse' : ''}`}
-                onDragOver={(e) => handleDragOver(e, undefined, 'discard')}
-                onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(e, undefined, 'discard')}
-              >
-                {gameState.discardPile.length > 0 ? (
-                  <div className="relative">
-                    {/* Caisse de fond */}
-                    <div className="absolute inset-0 w-20 h-28 bg-gradient-to-br from-red-800 via-red-700 to-red-900 border-4 border-circus-gold rounded-lg shadow-xl">
-                      {/* Clous décoratifs */}
-                      <div className="absolute top-2 left-2 w-1 h-1 bg-circus-black rounded-full"></div>
-                      <div className="absolute top-2 right-2 w-1 h-1 bg-circus-black rounded-full"></div>
-                      <div className="absolute bottom-2 left-2 w-1 h-1 bg-circus-black rounded-full"></div>
-                      <div className="absolute bottom-2 right-2 w-1 h-1 bg-circus-black rounded-full"></div>
-                    </div>
-
-                    {/* Carte visible */}
-                    <div 
-                      className="relative z-10 transform hover:scale-105 transition-all duration-300 cursor-move"
-                      draggable={!gameState.isGameOver && !gameState.isAITurn}
-                      onDragStart={(e) => handleDragStart(e, 0, 'discard', gameState.discardPile[gameState.discardPile.length - 1].id)}
-                      onDragEnd={handleDragEnd}
-                    >
-                      <Card 
-                        card={gameState.discardPile[gameState.discardPile.length - 1]} 
-                        size="medium"
-                      />
-                    </div>
-
-                    {/* Ombre 3D */}
-                    <div className="absolute top-2 left-2 w-20 h-28 bg-circus-black opacity-30 rounded-lg -z-20"></div>
-                  </div>
-                ) : (
-                  <div className="relative">
-                    {/* Caisse vide */}
-                    <div className="w-20 h-28 bg-gradient-to-br from-gray-600 via-gray-500 to-gray-700 border-4 border-dashed border-circus-navy rounded-lg flex items-center justify-center shadow-xl relative overflow-hidden">
-                      {/* Texture */}
-                      <div className="absolute inset-0 bg-gradient-to-br from-transparent via-gray-400 to-transparent opacity-30"></div>
-
-                      {/* Clous décoratifs */}
-                      <div className="absolute top-2 left-2 w-1 h-1 bg-circus-black rounded-full"></div>
-                      <div className="absolute top-2 right-2 w-1 h-1 bg-circus-black rounded-full"></div>
-                      <div className="absolute bottom-2 left-2 w-1 h-1 bg-circus-black rounded-full"></div>
-                      <div className="absolute bottom-2 right-2 w-1 h-1 bg-circus-black rounded-full"></div>
-
-                      <div className="text-gray-400 text-2xl opacity-50">📦</div>
-                    </div>
-
-                    {/* Ombre 3D */}
-                    <div className="absolute top-2 left-2 w-20 h-28 bg-circus-black opacity-30 rounded-lg -z-10"></div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Main du joueur actuel - Style scène de cirque */}
-          <UICard className="bg-gradient-to-br from-purple-900 via-purple-800 to-circus-black border-4 border-circus-gold shadow-2xl relative overflow-hidden">
-            {/* Rideaux de scène */}
-            <div className="absolute top-0 left-0 w-full h-4 bg-gradient-to-r from-circus-red via-circus-gold to-circus-red"></div>
-            <div className="absolute bottom-0 left-0 w-full h-4 bg-gradient-to-r from-circus-red via-circus-gold to-circus-red"></div>
-
-            {/* Projecteurs */}
-            <div className="absolute top-2 left-4 w-3 h-3 bg-circus-gold rounded-full animate-gentle-pulse"></div>
-            <div className="absolute top-2 right-4 w-3 h-3 bg-circus-gold rounded-full animate-gentle-pulse"></div>
-
-            <CardHeader className="relative z-10">
-              <CardTitle className="text-center text-circus-gold font-circus text-2xl">
-                🎭 Scène de {displayedPlayer.name} 🎭
-              </CardTitle>
-              <div className="text-center text-circus-cream text-sm">
-                ✨ Cartes en Main ✨
-              </div>
-            </CardHeader>
-            <CardContent className="relative z-10">
-              <div 
-                className={`flex flex-nowrap justify-center p-4 bg-gradient-to-br from-transparent via-purple-700 to-transparent rounded-lg ${
-                  displayedPlayer.hand.length > 13
-                    ? 'gap-0'
-                    : displayedPlayer.hand.length > 8 
-                    ? 'gap-0 -space-x-2 sm:space-x-0 sm:gap-1 md:space-x-0' 
-                    : displayedPlayer.hand.length > 6 
-                      ? 'gap-1 sm:gap-2' 
-                      : 'gap-2'
-                } ${dropZoneActive === 'hand' ? 'ring-4 ring-circus-gold animate-pulse' : ''}`}
-                onDragOver={(e) => handleDragOver(e, undefined, 'hand')}
-                onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(e, undefined, 'hand')}
-              >
-                {displayedPlayer.hand.map((card, index) => (
-                  <div 
-                    key={card.id} 
-                    className={`transform transition-all duration-300 hover:scale-110 hover:z-10 cursor-move ${
-                      draggedCardIndex === index ? 'opacity-50 scale-95' : ''
-                    } ${
-                      dragOverIndex === index ? 'scale-110 ring-4 ring-circus-gold z-10' : ''
-                    } ${
-                      displayedPlayer.hand.length > 8 ? 'hover:scale-125' : ''
-                    }`}
-                    style={{
-                      zIndex: dragOverIndex === index || selectedCardIds.includes(card.id) ? 20 : 10
-                    }}
-                    draggable={!gameState.isGameOver && !gameState.isAITurn}
-                    onDragStart={(e) => handleDragStart(e, index, 'hand', card.id)}
-                    onDragOver={(e) => handleDragOver(e, index)}
-                    onDragLeave={handleDragLeave}
-                    onDrop={(e) => handleDrop(e, index)}
-                    onDragEnd={handleDragEnd}
-                  >
-                    <Card
-                      card={card}
-                      isSelected={selectedCardIds.includes(card.id)}
-                      onClick={() => handleCardClick(card.id)}
-                      size={displayedPlayer.hand.length > 10 ? "small" : displayedPlayer.hand.length > 7 ? "medium" : "medium"}
-                      className={displayedPlayer.hand.length > 8 ? "sm:w-14 sm:h-20" : ""}
-                    />
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </UICard>
-
-          {/* Numéros de Cirque - Combinaisons posées */}
-          {displayedPlayer.combinations.length > 0 && (
-            <UICard className="mt-6 bg-gradient-to-br from-emerald-900 via-green-800 to-emerald-900 border-4 border-circus-gold shadow-2xl relative overflow-hidden">
-              {/* Décoration de chapiteau */}
-              <div className="absolute top-0 left-0 w-full h-6 bg-gradient-to-r from-circus-red via-circus-gold to-circus-red"></div>
-              <div className="absolute top-1 left-0 w-full h-4 bg-gradient-to-r from-transparent via-circus-gold to-transparent opacity-50"></div>
-
-              {/* Étoiles décoratives */}
-              <div className="absolute top-3 left-4 text-circus-gold text-xl animate-gentle-pulse">⭐</div>
-              <div className="absolute top-3 right-4 text-circus-gold text-xl animate-gentle-pulse">⭐</div>
-
-              <CardHeader className="relative z-10 pt-8">
-                <CardTitle className="text-center text-circus-gold font-circus text-2xl">
-                  🏆 Numéros Présentés par {displayedPlayer.name} 🏆
-                </CardTitle>
-                <div className="text-center text-circus-cream text-sm">
-                  ✨ Spectacles Réussis ✨
-                </div>
-              </CardHeader>
-              <CardContent className="relative z-10">
-                <div className="space-y-6">
-                  {displayedPlayer.combinations.map((combination, index) => (
-                    <div key={combination.id} className="border-4 border-circus-gold rounded-lg p-4 bg-gradient-to-br from-circus-cream via-amber-50 to-circus-cream shadow-xl relative overflow-hidden">
-                      {/* Cadre décoratif */}
-                      <div className="absolute inset-1 border-2 border-double border-circus-gold opacity-30 rounded-md"></div>
-
-                      {/* Coins dorés */}
-                      <div className="absolute top-1 left-1 w-2 h-2 bg-circus-gold rounded-full"></div>
-                      <div className="absolute top-1 right-1 w-2 h-2 bg-circus-gold rounded-full"></div>
-                      <div className="absolute bottom-1 left-1 w-2 h-2 bg-circus-gold rounded-full"></div>
-                      <div className="absolute bottom-1 right-1 w-2 h-2 bg-circus-gold rounded-full"></div>
-
-                      <div className="relative z-10">
-                        <h4 className="text-lg font-circus text-circus-red text-center mb-3 border-b-2 border-circus-gold pb-2">
-                          {combination.type === 'group' ? '🎯 Numéro de Groupe' : '🔗 Numéro de Suite'} #{index + 1}
-                        </h4>
-                        <div className="flex flex-wrap gap-2 justify-center bg-gradient-to-br from-transparent via-circus-cream to-transparent p-3 rounded-lg">
-                          {combination.cards.map(card => (
-                            <div key={card.id} className="transform hover:scale-110 transition-all duration-300">
-                              <Card
-                                card={card}
-                                size="small"
-                              />
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Extension button - only show if current player has completed mission and has selected cards */}
-                        {gameState.players[gameState.currentPlayerIndex].completedMissions.length > 0 && 
-                         selectedCardIds.length > 0 && 
-                         !gameState.isGameOver && 
-                         !gameState.isAITurn && (
-                          <div className="mt-3 text-center">
-                            <Button
-                              onClick={() => {
-                                addToExistingCombination(selectedCardIds, combination.id, displayedPlayer.id);
-                                setSelectedCardIds([]);
-                              }}
-                              size="sm"
-                              className="bg-gradient-to-br from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white font-circus text-sm px-4 py-2 border-2 border-circus-gold shadow-lg transform transition-all duration-300 hover:scale-105"
-                            >
-                              ➕ Étendre cette combinaison ({selectedCardIds.length})
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </UICard>
-          )}
-
-          {/* Game Over Display */}
-          {gameState.isGameOver && (
-            <UICard className="mt-6 bg-gradient-to-br from-yellow-600 to-yellow-700 border-4 border-yellow-300">
-              <CardContent className="p-6 text-center">
-                <h2 className="text-3xl font-bold text-black mb-4">
-                  🎉 FIN DU SPECTACLE! 🎉
-                </h2>
-                <p className="text-xl text-black mb-4">
-                  🏆 {gameState.winner} remporte la partie!
-                </p>
-                <p className="text-lg text-black">
-                  Félicitations pour avoir complété 7 missions du cirque!
-                </p>
-              </CardContent>
-            </UICard>
-          )}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <PlayerStatus
+            name={displayedPlayer.name}
+            isCurrent={isDisplayedTurn}
+            cards={displayedPlayer.hand.length}
+            missionsDone={displayedPlayer.completedMissions.length}
+          />
+          <PlayerStatus
+            name={opponent.name}
+            isCurrent={!isDisplayedTurn && !gameState.isGameOver}
+            isOpponent
+            isAI={gameState.gameMode === 'ai'}
+            cards={opponent.hand.length}
+            missionsDone={opponent.completedMissions.length}
+          />
         </div>
       </div>
 
-      {/* Journal du Cirque - Historique */}
-      <div className="mt-8 text-center">
-        <Button 
-          onClick={() => setShowHistory(!showHistory)}
-          className="bg-gradient-to-br from-circus-gold via-yellow-500 to-circus-gold hover:from-yellow-500 hover:to-yellow-600 text-circus-black font-circus text-lg px-8 py-3 border-4 border-circus-red shadow-2xl transform transition-all duration-300 hover:scale-105 relative overflow-hidden"
-        >
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-circus-cream to-transparent opacity-30"></div>
-          <span className="relative z-10">
-            {showHistory ? '🔼' : '🔽'} 📜 Journal du Spectacle 📜
-          </span>
-        </Button>
+      {/* Scrollable middle */}
+      <div style={{
+        flex: 1, padding: compact ? 12 : '14px 20px',
+        display: 'flex', flexDirection: 'column', gap: 12,
+      }}>
+        <MissionPanel player={displayedPlayer} />
+
+        <DeckArea
+          deckCount={gameState.deck.length}
+          topDiscard={topDiscard}
+          canDraw={isDisplayedTurn && !gameState.hasDrawnThisTurn && !gameState.isGameOver}
+          onDrawDeck={() => drawCard(false)}
+          onDrawDiscard={() => drawCard(true)}
+        />
+
+        <TableCombos
+          player={displayedPlayer}
+          canExtend={isDisplayedTurn && displayedPlayer.completedMissions.length > 0}
+          onExtend={handleExtend}
+          selectedCount={selectedCardIds.length}
+        />
+
+        {opponent.combinations.length > 0 && (
+          <div style={{ opacity: 0.85 }}>
+            <TableCombos
+              player={opponent}
+              canExtend={isDisplayedTurn && displayedPlayer.completedMissions.length > 0}
+              onExtend={handleExtend}
+              selectedCount={selectedCardIds.length}
+            />
+          </div>
+        )}
 
         {showHistory && (
-          <UICard className="mt-6 bg-gradient-to-br from-circus-cream via-amber-50 to-circus-cream border-4 border-circus-gold shadow-2xl relative overflow-hidden">
-            {/* Décoration de parchemin */}
-            <div className="absolute top-0 left-0 w-full h-3 bg-gradient-to-r from-circus-gold via-amber-600 to-circus-gold"></div>
-            <div className="absolute bottom-0 left-0 w-full h-3 bg-gradient-to-r from-circus-gold via-amber-600 to-circus-gold"></div>
-
-            {/* Coins de parchemin */}
-            <div className="absolute top-2 left-2 w-3 h-3 bg-circus-gold transform rotate-45"></div>
-            <div className="absolute top-2 right-2 w-3 h-3 bg-circus-gold transform rotate-45"></div>
-            <div className="absolute bottom-2 left-2 w-3 h-3 bg-circus-gold transform rotate-45"></div>
-            <div className="absolute bottom-2 right-2 w-3 h-3 bg-circus-gold transform rotate-45"></div>
-
-            <CardHeader className="relative z-10">
-              <CardTitle className="text-center text-circus-red font-circus text-xl">
-                📖 Chronique des Événements 📖
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-6 relative z-10">
-              <div className="max-h-40 overflow-y-auto bg-gradient-to-br from-transparent via-circus-cream to-transparent p-4 rounded-lg border-2 border-circus-gold">
-                {gameState.gameHistory.map((entry, index) => (
-                  <p key={index} className="text-sm text-circus-black mb-2 font-semibold leading-relaxed border-b border-circus-gold border-opacity-30 pb-1">
-                    <span className="text-circus-red">•</span> {entry}
-                  </p>
-                ))}
-                {gameState.gameHistory.length === 0 && (
-                  <p className="text-circus-navy italic text-center">
-                    Le spectacle commence... 🎭
-                  </p>
-                )}
+          <div style={{
+            background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 12, padding: '10px 12px', maxHeight: 200, overflowY: 'auto',
+          }}>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.55)', marginBottom: 6 }}>
+              Journal du spectacle
+            </div>
+            {gameState.gameHistory.length === 0 ? (
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', fontStyle: 'italic' }}>Le spectacle commence…</div>
+            ) : gameState.gameHistory.slice().reverse().map((entry, i) => (
+              <div key={i} style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', padding: '3px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                <span style={{ color: C.gold }}>•</span> {entry}
               </div>
-            </CardContent>
-          </UICard>
+            ))}
+          </div>
         )}
-      </div>
-
-      {/* Contrôles de jeu - Style billetterie de cirque */}
-      <div className="mt-8 text-center space-y-6">
-        <div className="bg-gradient-to-br from-circus-black via-gray-800 to-circus-black p-6 rounded-lg border-4 border-circus-gold shadow-2xl relative overflow-hidden">
-          {/* Décoration de chapiteau */}
-          <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-circus-red via-circus-gold to-circus-red"></div>
-          <div className="absolute bottom-0 left-0 w-full h-2 bg-gradient-to-r from-circus-red via-circus-gold to-circus-red"></div>
-
-          <h3 className="text-circus-gold font-circus text-xl mb-4">🎫 Billetterie du Cirque 🎫</h3>
-
-          <div className="flex flex-wrap justify-center gap-4 mb-4">
-            <Button 
-              onClick={() => newGame('pvp')} 
-              className="bg-gradient-to-br from-green-700 via-emerald-600 to-green-800 hover:from-green-600 hover:to-emerald-700 border-3 border-circus-gold text-circus-cream font-circus text-lg px-6 py-3 shadow-xl transform transition-all duration-300 hover:scale-110 hover:rotate-1 relative overflow-hidden"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-circus-gold to-transparent opacity-20"></div>
-              <span className="relative z-10">🎪 Duel de Magiciens</span>
-            </Button>
-            <Button 
-              onClick={() => newGame('ai')} 
-              className="bg-gradient-to-br from-circus-navy via-blue-700 to-circus-navy hover:from-blue-600 hover:to-blue-800 border-3 border-circus-gold text-circus-cream font-circus text-lg px-6 py-3 shadow-xl transform transition-all duration-300 hover:scale-110 hover:-rotate-1 relative overflow-hidden"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-circus-gold to-transparent opacity-20"></div>
-              <span className="relative z-10">🤖 Défier l'Automate</span>
-            </Button>
-          </div>
-
-          <div>
-            <Button 
-              onClick={resetGame} 
-              className="bg-gradient-to-br from-circus-red via-red-600 to-red-800 hover:from-red-600 hover:to-red-700 border-3 border-circus-gold text-circus-cream font-circus text-lg px-6 py-3 shadow-xl transform transition-all duration-300 hover:scale-105 relative overflow-hidden"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-circus-gold to-transparent opacity-20"></div>
-              <span className="relative z-10">🔄 Nouveau Spectacle</span>
-            </Button>
-          </div>
-        </div>
 
         {gameState.isAITurn && (
-          <div className="bg-gradient-to-br from-circus-navy via-blue-800 to-circus-navy border-4 border-circus-gold rounded-lg p-6 shadow-2xl relative overflow-hidden">
-            {/* Effet de brillance */}
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-circus-gold to-transparent opacity-10 animate-gentle-pulse"></div>
+          <div style={{
+            background: 'rgba(30,58,95,0.4)', border: '1px solid rgba(212,168,74,0.3)',
+            borderRadius: 12, padding: 14, textAlign: 'center',
+          }}>
+            <div style={{ fontSize: 24, marginBottom: 4 }}>🤖</div>
+            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.85)' }}>L'automate calcule son tour…</div>
+          </div>
+        )}
 
-            <div className="relative z-10 text-center">
-              <div className="text-4xl mb-2 animate-spin">🤖</div>
-              <p className="text-circus-cream font-circus text-lg animate-gentle-pulse">
-                L'Automate calcule son prochain tour...
-              </p>
-              <div className="flex justify-center space-x-1 mt-3">
-                <div className="w-2 h-2 bg-circus-gold rounded-full animate-bounce"></div>
-                <div className="w-2 h-2 bg-circus-gold rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-                <div className="w-2 h-2 bg-circus-gold rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
-              </div>
+        {gameState.isGameOver && (
+          <div style={{
+            background: `linear-gradient(135deg, ${C.gold}, #b8902f)`,
+            borderRadius: 12, padding: 18, color: C.ink, textAlign: 'center',
+            boxShadow: '0 4px 20px rgba(212,168,74,0.4)',
+          }}>
+            <div style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 800, marginBottom: 6 }}>
+              Fin du spectacle !
+            </div>
+            <div style={{ fontSize: 15, fontWeight: 600 }}>{gameState.winner} remporte la partie.</div>
+            <div style={{ marginTop: 10, display: 'flex', gap: 8, justifyContent: 'center' }}>
+              <Btn onClick={() => newGame('pvp')}>Nouveau duel</Btn>
+              <Btn onClick={() => newGame('ai')} primary>Jouer contre l'IA</Btn>
             </div>
           </div>
         )}
+
+        {/* Game controls */}
+        {!gameState.isGameOver && (
+          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <Btn size="sm" tone="ghost" onClick={() => newGame('pvp')} style={{ flex: 1 }}>Duel</Btn>
+            <Btn size="sm" tone="ghost" onClick={() => newGame('ai')} style={{ flex: 1 }}>vs IA</Btn>
+            <Btn size="sm" tone="ghost" onClick={resetGame} style={{ flex: 1 }}>Réinitialiser</Btn>
+          </div>
+        )}
+      </div>
+
+      {/* Sticky hand + action bar */}
+      <div style={{
+        flexShrink: 0, background: C.bgTop, borderTop: '1px solid rgba(255,255,255,0.06)',
+        position: 'sticky', bottom: 0, zIndex: 20,
+      }}>
+        <div style={{ padding: compact ? '10px 12px 0' : '12px 20px 0' }}>
+          <Hand
+            cards={displayedPlayer.hand}
+            selected={selectedCardIds}
+            onToggle={toggleCard}
+            sortMode={sortMode}
+            onSort={setSortMode}
+            highlightIds={step === 'play' ? highlightIds : []}
+            compact={compact}
+          />
+        </div>
+        <ActionBar
+          step={step}
+          selectedCount={selectedCardIds.length}
+          missionDone={currentPlayer.isCurrentMissionCompleted()}
+          onPlay={handlePlay}
+          onDiscard={handleDiscard}
+          onClear={clearSelection}
+        />
       </div>
     </div>
   );
