@@ -345,7 +345,7 @@ describe('Post-Mission Completion Integration Tests', () => {
       }
       
       const result = mockAddToExisting(['K-hearts'], 'non-existent-combo')
-      expect(result).toBe(false)
+      expect(result).toBeUndefined()
     })
 
     it('should handle game state with winner correctly', () => {

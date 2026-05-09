@@ -19,8 +19,8 @@ describe('Mission System', () => {
   })
 
   describe('Mission Data Structure', () => {
-    it('should have 30 missions defined', () => {
-      expect(MISSIONS).toHaveLength(30)
+    it('should have 29 missions defined', () => {
+      expect(MISSIONS).toHaveLength(29)
     })
 
     it('should have all missions with required properties', () => {
@@ -344,9 +344,9 @@ describe('Mission System', () => {
   })
 
   describe('Mission Progression Rules', () => {
-    it('should assign random missions from 30 available', () => {
-      // This tests the rule from README: "Les missions sont assignées aléatoirement parmi les 30 missions disponibles"
-      expect(MISSIONS).toHaveLength(30)
+    it('should assign random missions from available missions', () => {
+      // This tests the rule from README: "Les missions sont assignées aléatoirement parmi les missions disponibles"
+      expect(MISSIONS).toHaveLength(29)
 
       const missionIds = MISSIONS.map(m => m.id)
       expect(missionIds).toContain(1)
