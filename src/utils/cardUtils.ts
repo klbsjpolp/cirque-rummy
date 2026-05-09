@@ -461,6 +461,42 @@ const checkAdvancedRequirements = (groups: Card[][], sequences: Card[][], requir
       );
     }
 
+    case 'three_groups_of_4': {
+      // All groups must have exactly 4 cards
+      return groups.length === 3 && groups.every(group => group.length === 4);
+    }
+
+    case 'two_groups_3_one_group_4': {
+      // Two groups of 3 + one group of 4
+      if (groups.length !== 3) return false;
+      const sizes = groups.map(g => g.length).sort();
+      return sizes[0] === 3 && sizes[1] === 3 && sizes[2] === 4;
+    }
+
+    case 'three_suits_no_diamonds': {
+      // The group's non-joker cards must use suits from {spades, clubs, hearts} only
+      if (groups.length === 0) return false;
+      return groups.every(group => {
+        const normalCards = group.filter(isNormalCard);
+        return normalCards.every(card => card.suit !== 'diamonds');
+      });
+    }
+
+    case 'full_suit_A_to_K': {
+      // The single sequence must cover A through K of one suit
+      if (sequences.length !== 1) return false;
+      const seq = sequences[0];
+      if (seq.length !== 13) return false;
+      const normalCards = seq.filter(isNormalCard);
+      if (normalCards.length === 0) return true; // 13 jokers, trivially OK
+      const suit = normalCards[0].suit;
+      if (!normalCards.every(c => c.suit === suit)) return false;
+      const values = new Set(normalCards.map(c => c.value));
+      // A sequence of 13 same-suit consecutive values necessarily covers A..K,
+      // but assert no duplicate values just in case.
+      return values.size === normalCards.length;
+    }
+
     default:
       return true;
   }
@@ -623,6 +659,122 @@ export const validateMissionFromSelection = (
         }
         console.log('❌ Special requirement not satisfied');
         return { isValid: false, usedCombinations: [] };
+      }
+
+      case '7_same_suit': {
+        // Mission 7: 7 cards of the same suit (free arrangement, jokers as wildcards)
+        if (selectedCards.length !== 7) return { isValid: false, usedCombinations: [] };
+        const normalCards = selectedCards.filter(isNormalCard);
+        if (normalCards.length === 0) return { isValid: false, usedCombinations: [] };
+        const targetSuit = normalCards[0].suit;
+        if (!normalCards.every(c => c.suit === targetSuit)) {
+          return { isValid: false, usedCombinations: [] };
+        }
+        return {
+          isValid: true,
+          usedCombinations: [{ cards: selectedCards, type: 'group' }]
+        };
+      }
+
+      case 'sequence_A_to_9': {
+        // Mission 19: Sequence A-2-3-4-5-6-7-8-9, suits free
+        if (selectedCards.length !== 9) return { isValid: false, usedCombinations: [] };
+        const targetValues: CardValue[] = ['A', '2', '3', '4', '5', '6', '7', '8', '9'];
+        const normalCards = selectedCards.filter(isNormalCard);
+        const jokers = selectedCards.filter(isJokerCard);
+        const valueCount = new Map<CardValue, number>();
+        for (const card of normalCards) {
+          if (!targetValues.includes(card.value)) {
+            return { isValid: false, usedCombinations: [] };
+          }
+          valueCount.set(card.value, (valueCount.get(card.value) ?? 0) + 1);
+        }
+        let missing = 0;
+        for (const v of targetValues) {
+          const cnt = valueCount.get(v) ?? 0;
+          if (cnt > 1) return { isValid: false, usedCombinations: [] };
+          if (cnt === 0) missing++;
+        }
+        if (missing !== jokers.length) return { isValid: false, usedCombinations: [] };
+        return {
+          isValid: true,
+          usedCombinations: [{ cards: selectedCards, type: 'sequence' }]
+        };
+      }
+
+      case 'red_even_sequence_6': {
+        // Mission 30: 6 red cards with values 2, 4, 6, 8, 10, Q
+        if (selectedCards.length !== 6) return { isValid: false, usedCombinations: [] };
+        const targetValues: CardValue[] = ['2', '4', '6', '8', '10', 'Q'];
+        const normalCards = selectedCards.filter(isNormalCard);
+        const jokers = selectedCards.filter(isJokerCard);
+        const valueCount = new Map<CardValue, number>();
+        for (const card of normalCards) {
+          if (!targetValues.includes(card.value)) {
+            return { isValid: false, usedCombinations: [] };
+          }
+          if (card.suit !== 'hearts' && card.suit !== 'diamonds') {
+            return { isValid: false, usedCombinations: [] };
+          }
+          valueCount.set(card.value, (valueCount.get(card.value) ?? 0) + 1);
+        }
+        let missing = 0;
+        for (const v of targetValues) {
+          const cnt = valueCount.get(v) ?? 0;
+          if (cnt > 1) return { isValid: false, usedCombinations: [] };
+          if (cnt === 0) missing++;
+        }
+        if (missing !== jokers.length) return { isValid: false, usedCombinations: [] };
+        return {
+          isValid: true,
+          usedCombinations: [{ cards: selectedCards, type: 'sequence' }]
+        };
+      }
+
+      case 'sequence_8_max_2_suits': {
+        // Mission 16: A sequence of 8 consecutive values using at most 2 suits.
+        // The 8 values must be consecutive; each value appears at most once;
+        // jokers fill missing values within the run.
+        if (selectedCards.length !== 8) return { isValid: false, usedCombinations: [] };
+        const normalCards = selectedCards.filter(isNormalCard);
+        const jokers = selectedCards.filter(isJokerCard);
+        const suits = new Set(normalCards.map(c => c.suit));
+        if (suits.size > 2) return { isValid: false, usedCombinations: [] };
+        const valueNumbers = normalCards.map(c => getCardValueNumber(c.value));
+        if (new Set(valueNumbers).size !== valueNumbers.length) {
+          return { isValid: false, usedCombinations: [] };
+        }
+        if (valueNumbers.length === 0) {
+          // 8 jokers — trivially valid
+          return {
+            isValid: true,
+            usedCombinations: [{ cards: selectedCards, type: 'sequence' }]
+          };
+        }
+        const minVal = Math.min(...valueNumbers);
+        const maxVal = Math.max(...valueNumbers);
+        // The run must fit within 8 consecutive slots and start no earlier than 1 (A) and end no later than 13 (K)
+        const span = maxVal - minVal + 1;
+        if (span > 8) return { isValid: false, usedCombinations: [] };
+        // Internal gaps must be fillable by jokers; remaining jokers extend at either end
+        const gapsInside = span - valueNumbers.length;
+        const extension = 8 - span;
+        const jokersNeeded = gapsInside;
+        if (jokers.length < jokersNeeded) return { isValid: false, usedCombinations: [] };
+        const jokersForExtension = jokers.length - jokersNeeded;
+        if (jokersForExtension !== extension) {
+          return { isValid: false, usedCombinations: [] };
+        }
+        // Ensure the extension fits within A..K bounds for at least one placement
+        const earliestStart = Math.max(1, minVal - jokersForExtension);
+        const latestStart = Math.min(minVal, 13 - 8 + 1);
+        if (earliestStart > latestStart) {
+          return { isValid: false, usedCombinations: [] };
+        }
+        return {
+          isValid: true,
+          usedCombinations: [{ cards: selectedCards, type: 'sequence' }]
+        };
       }
 
       case 'same_suit': {
