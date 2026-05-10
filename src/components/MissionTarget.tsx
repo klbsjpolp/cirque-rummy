@@ -34,7 +34,7 @@ function missionToShapes(mission: Mission): Shape[] {
     case 'two_groups_3_one_group_4':
       return [G(3), G(3), G(4)];
     case '7_same_suit':
-      return [G(7, { cornerSuit: '♠' })];
+      return [G(7)];
     case 'sequence_8_max_2_suits':
       return [S(8)];
     case 'sequence_A_to_9':
@@ -42,7 +42,7 @@ function missionToShapes(mission: Mission): Shape[] {
     case 'seven_odd_cards':
       return [G(7, { values: ['A', '3', '5', '7', '9', 'J', 'K'] })];
     case 'full_suit_A_to_K':
-      return [S(13, { cornerSuit: '♠', values: ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'] })];
+      return [S(13, { values: ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'] })];
     case 'hearts_7_8_9_10':
       return [S(4, { cornerSuit: '♥', values: ['7', '8', '9', '10'] })];
     case 'spades_and_clubs_sequences':
@@ -58,7 +58,7 @@ function missionToShapes(mission: Mission): Shape[] {
     case 'different_suits':
       return [S(5, { cornerSuit: '♠' }), S(5, { cornerSuit: '♥' })];
     case 'same_suit':
-      return [S(minSeq, { cornerSuit: '♥' })];
+      return [S(minSeq)];
   }
 
   // Generic: groups + sequences combos
