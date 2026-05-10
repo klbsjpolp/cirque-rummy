@@ -62,7 +62,8 @@ const initialGameState = (gameMode: 'pvp' | 'ai' = 'pvp'): GameState => {
     isAITurn: false,
     cardsDrawnThisTurn: 0,
     hasDrawnThisTurn: false,
-    mustDiscardToEndTurn: false
+    mustDiscardToEndTurn: false,
+    lastDrawnCardId: null
   };
 };
 
@@ -92,6 +93,9 @@ export const useGameState = () => {
         }
         if (parsedState.mustDiscardToEndTurn === undefined) {
           parsedState.mustDiscardToEndTurn = false;
+        }
+        if (parsedState.lastDrawnCardId === undefined) {
+          parsedState.lastDrawnCardId = null;
         }
 
         return parsedState;
@@ -133,20 +137,24 @@ export const useGameState = () => {
         return prev; // Return unchanged state
       }
 
+      let drawnCard: Card | undefined;
       if (fromDiscard && newState.discardPile.length > 0) {
-        const card = newState.discardPile.pop()!;
-        currentPlayer.hand.push(card);
+        newState.discardPile = [...newState.discardPile];
+        drawnCard = newState.discardPile.pop()!;
         newState.gameHistory.push(`${currentPlayer.name} pioche de la défausse`);
-        newState.cardsDrawnThisTurn += 1;
-        newState.hasDrawnThisTurn = true;
-        newState.mustDiscardToEndTurn = true;
       } else if (newState.deck.length > 0) {
-        const card = newState.deck.pop()!;
-        currentPlayer.hand.push(card);
+        newState.deck = [...newState.deck];
+        drawnCard = newState.deck.pop()!;
         newState.gameHistory.push(`${currentPlayer.name} pioche du paquet`);
+      }
+
+      if (drawnCard) {
+        const updatedPlayer = { ...currentPlayer, hand: [...currentPlayer.hand, drawnCard] };
+        newState.players = newState.players.map((p, i) => i === newState.currentPlayerIndex ? updatedPlayer : p);
         newState.cardsDrawnThisTurn += 1;
         newState.hasDrawnThisTurn = true;
         newState.mustDiscardToEndTurn = true;
+        newState.lastDrawnCardId = drawnCard.id;
       }
 
       return newState;
@@ -166,6 +174,8 @@ export const useGameState = () => {
 
       const cardIndex = currentPlayer.hand.findIndex(card => card.id === cardId);
       if (cardIndex !== -1) {
+        currentPlayer.hand = [...currentPlayer.hand];
+        newState.discardPile = [...newState.discardPile];
         const card = currentPlayer.hand.splice(cardIndex, 1)[0];
         newState.discardPile.push(card);
         newState.gameHistory.push(`${currentPlayer.name} défausse ${isJokerCard(card) ? 'Joker' : card.value + getSuitSymbol(card.suit)}`);
@@ -183,6 +193,7 @@ export const useGameState = () => {
           newState.cardsDrawnThisTurn = 0;
           newState.hasDrawnThisTurn = false;
           newState.mustDiscardToEndTurn = false;
+          newState.lastDrawnCardId = null;
 
           // Check if it's AI turn
           if (newState.gameMode === 'ai' && newState.currentPlayerIndex === 1) {
@@ -219,6 +230,8 @@ export const useGameState = () => {
       if (!isValid) return prev;
 
       // Remove cards from hand
+      currentPlayer.hand = [...currentPlayer.hand];
+      currentPlayer.combinations = [...currentPlayer.combinations];
       cardIds.forEach(cardId => {
         const index = currentPlayer.hand.findIndex(card => card.id === cardId);
         if (index !== -1) currentPlayer.hand.splice(index, 1);
@@ -269,6 +282,8 @@ export const useGameState = () => {
       if (!validation.isValid) return prev;
 
       // Remove cards from hand
+      currentPlayer.hand = [...currentPlayer.hand];
+      currentPlayer.combinations = [...currentPlayer.combinations];
       cardIds.forEach(cardId => {
         const index = currentPlayer.hand.findIndex(card => card.id === cardId);
         if (index !== -1) currentPlayer.hand.splice(index, 1);
@@ -370,6 +385,8 @@ export const useGameState = () => {
       if (!allCardsUsed) return prev;
 
       // Remove cards from hand
+      currentPlayer.hand = [...currentPlayer.hand];
+      currentPlayer.combinations = [...currentPlayer.combinations];
       cardIds.forEach(cardId => {
         const index = currentPlayer.hand.findIndex(card => card.id === cardId);
         if (index !== -1) currentPlayer.hand.splice(index, 1);
@@ -740,6 +757,7 @@ export const useGameState = () => {
     gameState.cardsDrawnThisTurn = 0;
     gameState.hasDrawnThisTurn = false;
     gameState.mustDiscardToEndTurn = false;
+    gameState.lastDrawnCardId = null;
 
     gameState.gameHistory.push('🎪 Nouvelle manche commencée!');
   };

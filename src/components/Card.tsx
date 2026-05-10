@@ -6,6 +6,7 @@ interface CardProps {
   card: CardType;
   isSelected?: boolean;
   highlighted?: boolean;
+  justDrawn?: boolean;
   onClick?: () => void;
   className?: string;
   size?: 'small' | 'medium' | 'large';
@@ -25,6 +26,7 @@ const Card: React.FC<CardProps> = ({
   card,
   isSelected = false,
   highlighted = false,
+  justDrawn = false,
   onClick,
   className = '',
   size = 'medium',
@@ -35,23 +37,31 @@ const Card: React.FC<CardProps> = ({
 
   const baseShadow = isSelected
     ? '0 10px 20px rgba(0,0,0,0.22), 0 0 0 2px #e8c14a'
-    : highlighted
-      ? '0 4px 10px rgba(232,193,74,0.35), 0 0 0 1.5px #e8c14a'
-      : isVintage
-        ? '0 2px 6px rgba(60,40,20,0.2)'
-        : '0 2px 4px rgba(0,0,0,0.12), 0 0 0 0.5px rgba(0,0,0,0.04)';
+    : justDrawn
+      ? '0 0 0 2.5px #5fd4a8, 0 0 18px rgba(95,212,168,0.7), 0 6px 14px rgba(0,0,0,0.25)'
+      : highlighted
+        ? '0 4px 10px rgba(232,193,74,0.35), 0 0 0 1.5px #e8c14a'
+        : isVintage
+          ? '0 2px 6px rgba(60,40,20,0.2)'
+          : '0 2px 4px rgba(0,0,0,0.12), 0 0 0 0.5px rgba(0,0,0,0.04)';
+
+  const baseBorder = isSelected
+    ? '2px solid #e8c14a'
+    : justDrawn
+      ? '2px solid #5fd4a8'
+      : isVintage ? '1px solid #d4bf86' : '1px solid rgba(0,0,0,0.15)';
 
   const baseStyle: React.CSSProperties = {
     width: s.w,
     height: s.h,
     borderRadius: 8,
-    border: isSelected ? '2px solid #e8c14a' : isVintage ? '1px solid #d4bf86' : '1px solid rgba(0,0,0,0.15)',
+    border: baseBorder,
     boxShadow: baseShadow,
     position: 'relative',
     padding: s.pad,
     boxSizing: 'border-box',
     cursor: onClick ? 'pointer' : 'default',
-    transform: isSelected ? 'translateY(-10px)' : 'translateY(0)',
+    transform: isSelected ? 'translateY(-10px)' : justDrawn ? 'translateY(-6px)' : 'translateY(0)',
     transition: 'transform 0.18s cubic-bezier(.2,.7,.3,1), box-shadow 0.18s',
     userSelect: 'none',
     WebkitUserSelect: 'none',

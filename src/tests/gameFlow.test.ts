@@ -30,7 +30,8 @@ describe('Game Flow Mechanics', () => {
     isAITurn: false,
     cardsDrawnThisTurn: 0,
     hasDrawnThisTurn: false,
-    mustDiscardToEndTurn: false
+    mustDiscardToEndTurn: false,
+    lastDrawnCardId: null
   })
 
   describe('Game Initialization', () => {

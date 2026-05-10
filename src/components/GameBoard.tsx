@@ -301,8 +301,9 @@ const Hand: React.FC<{
   sortMode: SortMode;
   onSort: (m: SortMode) => void;
   highlightIds: string[];
+  justDrawnId: string | null;
   compact: boolean;
-}> = ({ cards, selected, onToggle, sortMode, onSort, highlightIds, compact }) => {
+}> = ({ cards, selected, onToggle, sortMode, onSort, highlightIds, justDrawnId, compact }) => {
   const sorted = useMemo(() => sortHand(cards, sortMode), [cards, sortMode]);
   const cardW = compact ? 48 : 60;
   const cardSize = compact ? 'small' : 'medium';
@@ -345,12 +346,13 @@ const Hand: React.FC<{
       }}>
         <div style={{ display: 'flex', position: 'relative' }}>
           {sorted.map((c, i) => (
-            <div key={c.id} style={{ marginLeft: i === 0 ? 0 : overlap, zIndex: selected.includes(c.id) ? 50 : i }}>
+            <div key={c.id} style={{ marginLeft: i === 0 ? 0 : overlap, zIndex: selected.includes(c.id) ? 50 : c.id === justDrawnId ? 40 : i }}>
               <Card
                 card={c}
                 size={cardSize}
                 isSelected={selected.includes(c.id)}
                 highlighted={highlightIds.includes(c.id)}
+                justDrawn={c.id === justDrawnId}
                 onClick={() => onToggle(c.id)}
               />
             </div>
@@ -677,6 +679,7 @@ const GameBoard: React.FC = () => {
             sortMode={sortMode}
             onSort={setSortMode}
             highlightIds={step === 'play' ? highlightIds : []}
+            justDrawnId={isDisplayedTurn ? gameState.lastDrawnCardId : null}
             compact={compact}
           />
         </div>

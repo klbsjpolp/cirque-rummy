@@ -83,4 +83,5 @@ export interface GameState {
   cardsDrawnThisTurn: number;
   hasDrawnThisTurn: boolean;
   mustDiscardToEndTurn: boolean;
+  lastDrawnCardId: string | null;
 }
