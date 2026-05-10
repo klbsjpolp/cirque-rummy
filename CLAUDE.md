@@ -36,5 +36,5 @@ pnpm exec tsc --noEmit  # type-check
 
 - **pnpm-only.** `pnpm-workspace.yaml` exists but only carries `allowBuilds` settings (for `@swc/core` and `esbuild`); this is a single-package repo, not a multi-package workspace. If you ever see a `package-lock.json` or `bun.lockb` reappear, delete it — someone ran the wrong tool.
 - **Vite base path** switches to `/cirque-rummy/` only when `NODE_ENV=production`. Asset paths in `index.html` and `public/` must stay relative-friendly.
-- `lovable-tagger` plugin runs in dev mode only — safe to ignore.
 - Game rules and post-mission restrictions are spelled out in README.md (French). When changing combination/validation logic, cross-check against those rules.
+- commit messages are in English and follow the [Angular convention](https://github.com/angular/angular/blob/main/contributing-docs/commit-message-guidelines.md) format (so *chore* is NOT a commit type).

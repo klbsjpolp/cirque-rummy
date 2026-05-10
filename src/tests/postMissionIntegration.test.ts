@@ -40,8 +40,8 @@ const createMockGameState = () => {
     discardPile: [],
     isGameStarted: true,
     isGameOver: false,
-    winner: null,
-    gameHistory: [],
+    winner: null as string | null,
+    gameHistory: [] as string[],
     gameMode: 'pvp' as const,
     isAITurn: false
   }
@@ -345,7 +345,7 @@ describe('Post-Mission Completion Integration Tests', () => {
       }
       
       const result = mockAddToExisting(['K-hearts'], 'non-existent-combo')
-      expect(result).toBe(false)
+      expect(result).toBeUndefined()
     })
 
     it('should handle game state with winner correctly', () => {

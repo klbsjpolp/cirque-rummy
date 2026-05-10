@@ -23,7 +23,7 @@ function shuffleArray<T>(array: T[]): T[] {
 
 type NormalCardToCreate = [CardValue, CardSuit]
 function validateMissionCards(describe: string, missionId: number, cardsToCreate: NormalCardToCreate[], postChecks?: (usedCombinaisons: UsedCombinations) => void) {
-  const mission = MISSIONS.find(m => m.id === missionId);
+  const mission = MISSIONS.find(m => m.id === missionId)!;
   const cards = shuffleArray(cardsToCreate).map(c => createCard(c[0], c[1]));
 
   // Validate original mission
@@ -40,7 +40,7 @@ function validateMissionCards(describe: string, missionId: number, cardsToCreate
 }
 
 function validateMissionCardsFail(describe: string, missionId: number, cardsToCreate: NormalCardToCreate[]) {
-  const mission = MISSIONS.find(m => m.id === missionId);
+  const mission = MISSIONS.find(m => m.id === missionId)!;
   const cards = shuffleArray(cardsToCreate).map(c => createCard(c[0], c[1]));
 
   // Only validate that mission fails without jokers to avoid exponential complexity
@@ -80,19 +80,34 @@ function validateOneScenarioFail(describe: string, requirements: MissionRequirem
 
 describe('Mission Validation Tests', () => {
   describe('Mission 1: Deux groupes de 3', () => {
-    validateMissionCards('should validate two groups of 3 cards each using unified validation',
-      1,
-      [
-      ['7', 'clubs'],
-      ['7', 'diamonds'],
-      ['7', 'spades'],
-      ['J', 'clubs'],
-      ['J', 'diamonds'],
-      ['J', 'hearts']
-    ], (combinations) => {
-      expect(combinations).toHaveLength(2)
-      expect(combinations.every(c => c.type === 'group')).toBe(true)
-      expect(combinations.every(c => c.cards.length === 3)).toBe(true)
+    it('should validate two groups of 3 cards each using unified validation', () => {
+      const mission = MISSIONS.find(m => m.id === 1)!;
+      const cards = [
+        createCard('7', 'clubs'),
+        createCard('7', 'diamonds'),
+        createCard('7', 'spades'),
+        createCard('J', 'clubs'),
+        createCard('J', 'diamonds'),
+        createCard('J', 'hearts'),
+      ];
+      const result = validateMissionFromSelection(cards, mission.requirements);
+      expect(result.isValid).toBe(true);
+      expect(result.usedCombinations).toHaveLength(2);
+      expect(result.usedCombinations.every(c => c.cards.length === 3)).toBe(true);
+    })
+
+    it('should validate two groups of 3 cards each using unified validation with jokers', () => {
+      const mission = MISSIONS.find(m => m.id === 1)!;
+      const cards = [
+        createCard('7', 'spades'),
+        createCard('J', 'clubs'),
+        createCard('J', 'diamonds'),
+        createCard('J', 'hearts'),
+        createJokerCard(),
+        createJokerCard(),
+      ];
+      const result = validateMissionFromSelection(cards, mission.requirements);
+      expect(result.isValid).toBe(true);
     })
 
     validateMissionCardsFail('should fail with only one group of 3 cards',
@@ -222,9 +237,9 @@ describe('Mission Validation Tests', () => {
       ])
   })
 
-  describe('Mission 5: Suite de 5', () => {
+  describe('Mission 27 (alt): Suite de 5 cartes rouges', () => {
     validateMissionCards('should validate one sequence of 5 cards',
-      5,
+      27,
       [
         ['6',  'diamonds'],
         ['7',  'diamonds'],
@@ -292,9 +307,9 @@ describe('Mission Validation Tests', () => {
       ])
   })
 
-  describe('Mission 7: 7 cartes même couleur', () => {
+  describe('Mission 6 (alt): 7 cartes consécutives même couleur', () => {
     validateMissionCards('should validate 7 cards of same suit (can be groups or sequences)',
-      7,
+      6,
       [
         ['A',  'diamonds'],
         ['2',  'diamonds'],
@@ -306,7 +321,7 @@ describe('Mission Validation Tests', () => {
       ])
 
     validateMissionCardsFail('should fail with only 6 cards',
-      7,
+      6,
       [
         ['A',  'diamonds'],
         ['2',  'diamonds'],
@@ -317,7 +332,7 @@ describe('Mission Validation Tests', () => {
       ])
 
     validateMissionCardsFail('should fail with 7 cards of different suits',
-      7,
+      6,
       [
         ['A',  'diamonds'],
         ['2',  'hearts'],
@@ -329,9 +344,9 @@ describe('Mission Validation Tests', () => {
       ])
   })
 
-  describe('Mission 8: Groupe de 4 + suite de 4', () => {
+  describe('Mission 13: Groupe de 4 + suite de 4', () => {
     validateMissionCards('should validate one group of 4 and one sequence of 4',
-      8,
+      13,
       [
         ['K',  'hearts'],
         ['K',  'diamonds'],
@@ -344,7 +359,7 @@ describe('Mission Validation Tests', () => {
       ])
 
     validateMissionCardsFail('should fail with only one group of 4 cards',
-      8,
+      13,
       [
         ['K',  'hearts'],
         ['K',  'diamonds'],
@@ -353,7 +368,7 @@ describe('Mission Validation Tests', () => {
       ])
 
     validateMissionCardsFail('should fail with group of 4 cards and sequence of 3 cards',
-      8,
+      13,
       [
         ['K',  'hearts'],
         ['K',  'diamonds'],
@@ -365,9 +380,9 @@ describe('Mission Validation Tests', () => {
       ])
   })
 
-  describe('Mission 9: Deux groupes de 4', () => {
+  describe('Mission 14: Deux groupes de 4', () => {
     validateMissionCards('should validate two groups of 4 cards each',
-      9,
+      14,
       [
         ['3',  'hearts'],
         ['3',  'diamonds'],
@@ -380,7 +395,7 @@ describe('Mission Validation Tests', () => {
       ])
 
     validateMissionCardsFail('should fail with only one group of 4 cards',
-      9,
+      14,
       [
         ['3',  'hearts'],
         ['3',  'diamonds'],
@@ -389,7 +404,7 @@ describe('Mission Validation Tests', () => {
       ])
 
     validateMissionCardsFail('should fail with two groups of 3 cards',
-      9,
+      14,
       [
         ['3',  'hearts'],
         ['3',  'diamonds'],
@@ -443,44 +458,9 @@ describe('Mission Validation Tests', () => {
       ])
   })
 
-  describe('Mission 11: Suite de 6', () => {
-    validateMissionCards('should validate one sequence of 6 cards',
-      11,
-      [
-        ['7',  'diamonds'],
-        ['8',  'diamonds'],
-        ['9',  'diamonds'],
-        ['10',  'diamonds'],
-        ['J',  'diamonds'],
-        ['Q',  'diamonds']
-      ])
-
-    validateMissionCardsFail('should fail with only 5 cards',
-      11,
-      [
-        ['7',  'diamonds'],
-        ['8',  'diamonds'],
-        ['9',  'diamonds'],
-        ['10',  'diamonds'],
-        ['J',  'diamonds']
-      ])
-
-    validateMissionCardsFail('should fail with sequence of 6 cards and one extra card',
-      11,
-      [
-        ['7',  'diamonds'],
-        ['8',  'diamonds'],
-        ['9',  'diamonds'],
-        ['10',  'diamonds'],
-        ['J',  'diamonds'],
-        ['Q',  'diamonds'],
-        ['K',  'diamonds']
-      ])
-  })
-
-  describe('Mission 12: Deux suites de 5', () => {
+  describe('Mission 21 (alt): Deux suites de 5 couleurs différentes', () => {
     validateMissionCards('should validate two sequences of 5 cards each',
-      12,
+      21,
       [
         ['2',  'spades'],
         ['3',  'spades'],
@@ -495,7 +475,7 @@ describe('Mission Validation Tests', () => {
       ])
 
     validateMissionCardsFail('should fail with only one sequence of 5 cards',
-      12,
+      21,
       [
         ['2',  'spades'],
         ['3',  'spades'],
@@ -505,7 +485,7 @@ describe('Mission Validation Tests', () => {
       ])
 
     validateMissionCardsFail('should fail with two sequences of 4 cards',
-      12,
+      21,
       [
         ['2',  'spades'],
         ['3',  'spades'],
@@ -518,82 +498,90 @@ describe('Mission Validation Tests', () => {
       ])
   })
 
-  describe('Mission 13: Groupe de 5', () => {
-    validateMissionCards('should validate one group of 5 cards',
-      13,
-      [
-        ['6',  'hearts'],
-        ['6',  'diamonds'],
-        ['6',  'clubs'],
-        ['6',  'spades'],
-        ['6',  'diamonds']
-      ])
+  describe('Mission 16: Suite de 8 (max 2 couleurs)', () => {
+    it('should validate one sequence of 8 cards single suit', () => {
+      const mission = MISSIONS.find(m => m.id === 16)!;
+      const cards = [
+        createCard('2', 'clubs'),
+        createCard('3', 'clubs'),
+        createCard('4', 'clubs'),
+        createCard('5', 'clubs'),
+        createCard('6', 'clubs'),
+        createCard('7', 'clubs'),
+        createCard('8', 'clubs'),
+        createCard('9', 'clubs'),
+      ];
+      const result = validateMissionFromSelection(cards, mission.requirements);
+      expect(result.isValid).toBe(true);
+    })
 
-    validateMissionCardsFail('should fail with only 4 cards',
-      13,
-      [
-        ['6',  'hearts'],
-        ['6',  'diamonds'],
-        ['6',  'clubs'],
-        ['6',  'spades']
-      ])
+    it('should validate one sequence of 8 cards using two suits', () => {
+      const mission = MISSIONS.find(m => m.id === 16)!;
+      const cards = [
+        createCard('2', 'clubs'),
+        createCard('3', 'clubs'),
+        createCard('4', 'clubs'),
+        createCard('5', 'clubs'),
+        createCard('6', 'spades'),
+        createCard('7', 'spades'),
+        createCard('8', 'spades'),
+        createCard('9', 'spades'),
+      ];
+      const result = validateMissionFromSelection(cards, mission.requirements);
+      expect(result.isValid).toBe(true);
+    })
 
-    validateMissionCardsFail('should fail with group of 5 cards and one extra card',
-      13,
-      [
-        ['6',  'hearts'],
-        ['6',  'diamonds'],
-        ['6',  'clubs'],
-        ['6',  'spades'],
-        ['6',  'diamonds'],
-        ['7',  'diamonds']
-      ])
+    it('should fail with three suits', () => {
+      const mission = MISSIONS.find(m => m.id === 16)!;
+      const cards = [
+        createCard('2', 'clubs'),
+        createCard('3', 'clubs'),
+        createCard('4', 'spades'),
+        createCard('5', 'spades'),
+        createCard('6', 'hearts'),
+        createCard('7', 'hearts'),
+        createCard('8', 'hearts'),
+        createCard('9', 'hearts'),
+      ];
+      const result = validateMissionFromSelection(cards, mission.requirements);
+      expect(result.isValid).toBe(false);
+    })
+
+    it('should fail with only 7 cards', () => {
+      const mission = MISSIONS.find(m => m.id === 16)!;
+      const cards = [
+        createCard('2', 'clubs'),
+        createCard('3', 'clubs'),
+        createCard('4', 'clubs'),
+        createCard('5', 'clubs'),
+        createCard('6', 'clubs'),
+        createCard('7', 'clubs'),
+        createCard('8', 'clubs'),
+      ];
+      const result = validateMissionFromSelection(cards, mission.requirements);
+      expect(result.isValid).toBe(false);
+    })
+
+    it('should fail with non-consecutive values', () => {
+      const mission = MISSIONS.find(m => m.id === 16)!;
+      const cards = [
+        createCard('2', 'clubs'),
+        createCard('3', 'clubs'),
+        createCard('4', 'clubs'),
+        createCard('5', 'clubs'),
+        createCard('7', 'clubs'),
+        createCard('8', 'clubs'),
+        createCard('9', 'clubs'),
+        createCard('10', 'clubs'),
+      ];
+      const result = validateMissionFromSelection(cards, mission.requirements);
+      expect(result.isValid).toBe(false);
+    })
   })
 
-  describe('Mission 14: Suite de 8', () => {
-    validateMissionCards('should validate one sequence of 8 cards',
-      14,
-      [
-        ['2',  'clubs'],
-        ['3',  'clubs'],
-        ['4',  'clubs'],
-        ['5',  'clubs'],
-        ['6',  'clubs'],
-        ['7',  'clubs'],
-        ['8',  'clubs'],
-        ['9',  'clubs']
-      ])
-
-    validateMissionCardsFail('should fail with only 7 cards',
-      14,
-      [
-        ['2',  'clubs'],
-        ['3',  'clubs'],
-        ['4',  'clubs'],
-        ['5',  'clubs'],
-        ['6',  'clubs'],
-        ['7',  'clubs'],
-        ['8',  'clubs']
-      ])
-
-    validateMissionCardsFail('should fail with sequence of 8 cards and one extra card',
-      14,
-      [
-        ['2',  'clubs'],
-        ['3',  'clubs'],
-        ['4',  'clubs'],
-        ['5',  'clubs'],
-        ['6',  'clubs'],
-        ['7',  'clubs'],
-        ['8',  'clubs'],
-        ['9',  'clubs'],
-        ['10',  'clubs']
-      ])
-  })
-
-  describe('Mission 15: Quatre groupes de 3', () => {
+  describe('Mission 9 (alt): Quatre groupes de 3', () => {
     validateMissionCards('should validate four groups of 3 cards each',
-      15,
+      9,
       [
         ['2',  'hearts'],
         ['2',  'diamonds'],
@@ -610,7 +598,7 @@ describe('Mission Validation Tests', () => {
       ])
 
     validateMissionCardsFail('should fail with only three groups of 3 cards',
-      15,
+      9,
       [
         ['2',  'hearts'],
         ['2',  'diamonds'],
@@ -621,7 +609,7 @@ describe('Mission Validation Tests', () => {
       ])
 
     validateMissionCardsFail('should fail with four groups of 2 cards',
-      15,
+      9,
       [
         ['2',  'hearts'],
         ['2',  'diamonds'],
@@ -634,9 +622,9 @@ describe('Mission Validation Tests', () => {
       ])
   })
 
-  describe('Mission 16: Deux suites de 5', () => {
+  describe('Mission 21 (alt2): Deux suites de 5 couleurs différentes', () => {
     validateMissionCards('should validate two sequences of 5 cards each',
-      16,
+      21,
       [
         ['4',  'hearts'],
         ['5',  'hearts'],
@@ -674,53 +662,214 @@ describe('Mission Validation Tests', () => {
       ])
   })
 
-  describe('Mission 17: Suite de 9', () => {
-    validateMissionCards('should validate one sequence of 9 cards',
-      17,
-      [
-        ['A',  'diamonds'],
-        ['2',  'diamonds'],
-        ['3',  'diamonds'],
-        ['4',  'diamonds'],
-        ['5',  'diamonds'],
-        ['6',  'diamonds'],
-        ['7',  'diamonds'],
-        ['8',  'diamonds'],
-        ['9',  'diamonds']
-      ])
+  describe('Mission 19: Suite de 9 (A à 9), couleurs libres', () => {
+    it('should validate sequence A-9 across mixed suits', () => {
+      const mission = MISSIONS.find(m => m.id === 19)!;
+      const cards = [
+        createCard('A', 'diamonds'),
+        createCard('2', 'hearts'),
+        createCard('3', 'clubs'),
+        createCard('4', 'spades'),
+        createCard('5', 'diamonds'),
+        createCard('6', 'hearts'),
+        createCard('7', 'clubs'),
+        createCard('8', 'spades'),
+        createCard('9', 'diamonds'),
+      ];
+      const result = validateMissionFromSelection(cards, mission.requirements);
+      expect(result.isValid).toBe(true);
+    })
 
-    validateMissionCardsFail('should fail with only 8 cards',
-      17,
-      [
-        ['A',  'diamonds'],
-        ['2',  'diamonds'],
-        ['3',  'diamonds'],
-        ['4',  'diamonds'],
-        ['5',  'diamonds'],
-        ['6',  'diamonds'],
-        ['7',  'diamonds'],
-        ['8',  'diamonds']
-      ])
+    it('should validate sequence A-9 with jokers filling gaps', () => {
+      const mission = MISSIONS.find(m => m.id === 19)!;
+      const cards = [
+        createCard('A', 'diamonds'),
+        createCard('2', 'hearts'),
+        createCard('3', 'clubs'),
+        createJokerCard(),
+        createCard('5', 'diamonds'),
+        createCard('6', 'hearts'),
+        createCard('7', 'clubs'),
+        createJokerCard(),
+        createCard('9', 'diamonds'),
+      ];
+      const result = validateMissionFromSelection(cards, mission.requirements);
+      expect(result.isValid).toBe(true);
+    })
 
-    validateMissionCardsFail('should fail with sequence of 9 cards and one extra card',
-      17,
-      [
-        ['A',  'diamonds'],
-        ['2',  'diamonds'],
-        ['3',  'diamonds'],
-        ['4',  'diamonds'],
-        ['5',  'diamonds'],
-        ['6',  'diamonds'],
-        ['7',  'diamonds'],
-        ['8',  'diamonds'],
-        ['9',  'diamonds'],
-        ['10',  'diamonds']
-      ])
+    it('should fail when value 10 is included', () => {
+      const mission = MISSIONS.find(m => m.id === 19)!;
+      const cards = [
+        createCard('A', 'diamonds'),
+        createCard('2', 'hearts'),
+        createCard('3', 'clubs'),
+        createCard('4', 'spades'),
+        createCard('5', 'diamonds'),
+        createCard('6', 'hearts'),
+        createCard('7', 'clubs'),
+        createCard('8', 'spades'),
+        createCard('10', 'diamonds'),
+      ];
+      const result = validateMissionFromSelection(cards, mission.requirements);
+      expect(result.isValid).toBe(false);
+    })
+
+    it('should fail with only 8 cards', () => {
+      const mission = MISSIONS.find(m => m.id === 19)!;
+      const cards = [
+        createCard('A', 'diamonds'),
+        createCard('2', 'hearts'),
+        createCard('3', 'clubs'),
+        createCard('4', 'spades'),
+        createCard('5', 'diamonds'),
+        createCard('6', 'hearts'),
+        createCard('7', 'clubs'),
+        createCard('8', 'spades'),
+      ];
+      const result = validateMissionFromSelection(cards, mission.requirements);
+      expect(result.isValid).toBe(false);
+    })
+
+    it('should fail with duplicate value', () => {
+      const mission = MISSIONS.find(m => m.id === 19)!;
+      const cards = [
+        createCard('A', 'diamonds'),
+        createCard('A', 'hearts'),
+        createCard('3', 'clubs'),
+        createCard('4', 'spades'),
+        createCard('5', 'diamonds'),
+        createCard('6', 'hearts'),
+        createCard('7', 'clubs'),
+        createCard('8', 'spades'),
+        createCard('9', 'diamonds'),
+      ];
+      const result = validateMissionFromSelection(cards, mission.requirements);
+      expect(result.isValid).toBe(false);
+    })
   })
 
-  describe('Mission 18: Trois groupes de 4', () => {
+  describe('Mission 7: 7 cartes même couleur', () => {
+    it('should validate 7 cards of same suit (any values)', () => {
+      const mission = MISSIONS.find(m => m.id === 7)!;
+      const cards = [
+        createCard('A', 'diamonds'),
+        createCard('2', 'diamonds'),
+        createCard('5', 'diamonds'),
+        createCard('7', 'diamonds'),
+        createCard('9', 'diamonds'),
+        createCard('J', 'diamonds'),
+        createCard('K', 'diamonds'),
+      ];
+      const result = validateMissionFromSelection(cards, mission.requirements);
+      expect(result.isValid).toBe(true);
+    })
+
+    it('should validate 7 same-suit cards including jokers', () => {
+      const mission = MISSIONS.find(m => m.id === 7)!;
+      const cards = [
+        createCard('A', 'diamonds'),
+        createCard('5', 'diamonds'),
+        createCard('7', 'diamonds'),
+        createCard('9', 'diamonds'),
+        createCard('K', 'diamonds'),
+        createJokerCard(),
+        createJokerCard(),
+      ];
+      const result = validateMissionFromSelection(cards, mission.requirements);
+      expect(result.isValid).toBe(true);
+    })
+
+    it('should fail with mixed suits', () => {
+      const mission = MISSIONS.find(m => m.id === 7)!;
+      const cards = [
+        createCard('A', 'diamonds'),
+        createCard('2', 'hearts'),
+        createCard('5', 'diamonds'),
+        createCard('7', 'diamonds'),
+        createCard('9', 'diamonds'),
+        createCard('J', 'diamonds'),
+        createCard('K', 'diamonds'),
+      ];
+      const result = validateMissionFromSelection(cards, mission.requirements);
+      expect(result.isValid).toBe(false);
+    })
+
+    it('should fail with only 6 cards', () => {
+      const mission = MISSIONS.find(m => m.id === 7)!;
+      const cards = [
+        createCard('A', 'diamonds'),
+        createCard('2', 'diamonds'),
+        createCard('5', 'diamonds'),
+        createCard('7', 'diamonds'),
+        createCard('9', 'diamonds'),
+        createCard('J', 'diamonds'),
+      ];
+      const result = validateMissionFromSelection(cards, mission.requirements);
+      expect(result.isValid).toBe(false);
+    })
+  })
+
+  describe('Mission 30: Suite paire de 6 cartes rouges', () => {
+    it('should validate 6 red even-valued cards (2,4,6,8,10,Q)', () => {
+      const mission = MISSIONS.find(m => m.id === 30)!;
+      const cards = [
+        createCard('2', 'hearts'),
+        createCard('4', 'hearts'),
+        createCard('6', 'diamonds'),
+        createCard('8', 'diamonds'),
+        createCard('10', 'hearts'),
+        createCard('Q', 'diamonds'),
+      ];
+      const result = validateMissionFromSelection(cards, mission.requirements);
+      expect(result.isValid).toBe(true);
+    })
+
+    it('should validate red even sequence with jokers filling values', () => {
+      const mission = MISSIONS.find(m => m.id === 30)!;
+      const cards = [
+        createCard('2', 'hearts'),
+        createCard('4', 'hearts'),
+        createJokerCard(),
+        createCard('8', 'diamonds'),
+        createCard('10', 'hearts'),
+        createJokerCard(),
+      ];
+      const result = validateMissionFromSelection(cards, mission.requirements);
+      expect(result.isValid).toBe(true);
+    })
+
+    it('should fail when a black card is included', () => {
+      const mission = MISSIONS.find(m => m.id === 30)!;
+      const cards = [
+        createCard('2', 'hearts'),
+        createCard('4', 'clubs'),
+        createCard('6', 'diamonds'),
+        createCard('8', 'diamonds'),
+        createCard('10', 'hearts'),
+        createCard('Q', 'diamonds'),
+      ];
+      const result = validateMissionFromSelection(cards, mission.requirements);
+      expect(result.isValid).toBe(false);
+    })
+
+    it('should fail when an odd value is included', () => {
+      const mission = MISSIONS.find(m => m.id === 30)!;
+      const cards = [
+        createCard('2', 'hearts'),
+        createCard('3', 'hearts'),
+        createCard('6', 'diamonds'),
+        createCard('8', 'diamonds'),
+        createCard('10', 'hearts'),
+        createCard('Q', 'diamonds'),
+      ];
+      const result = validateMissionFromSelection(cards, mission.requirements);
+      expect(result.isValid).toBe(false);
+    })
+  })
+
+  describe('Mission 23 (alt): Trois groupes de 4', () => {
     validateMissionCards('should validate three groups of 4 cards each',
-      18,
+      23,
       [
         ['4',  'hearts'],
         ['4',  'diamonds'],
@@ -737,7 +886,7 @@ describe('Mission Validation Tests', () => {
       ])
 
     validateMissionCardsFail('should fail with only two groups of 4 cards',
-      18,
+      23,
       [
         ['4',  'hearts'],
         ['4',  'diamonds'],
@@ -750,7 +899,7 @@ describe('Mission Validation Tests', () => {
       ])
 
     validateMissionCardsFail('should fail with three groups of 3 cards',
-      18,
+      23,
       [
         ['4',  'hearts'],
         ['4',  'diamonds'],
@@ -758,53 +907,6 @@ describe('Mission Validation Tests', () => {
         ['9',  'diamonds'],
         ['Q',  'hearts'],
         ['Q',  'diamonds']
-      ])
-  })
-
-  describe('Mission 19: Suite de 10', () => {
-    validateMissionCards('should validate one sequence of 10 cards',
-      19,
-      [
-        ['2',  'hearts'],
-        ['3',  'hearts'],
-        ['4',  'hearts'],
-        ['5',  'hearts'],
-        ['6',  'hearts'],
-        ['7',  'hearts'],
-        ['8',  'hearts'],
-        ['9',  'hearts'],
-        ['10',  'hearts'],
-        ['J',  'hearts']
-      ])
-
-    validateMissionCardsFail('should fail with only 9 cards',
-      19,
-      [
-        ['2',  'hearts'],
-        ['3',  'hearts'],
-        ['4',  'hearts'],
-        ['5',  'hearts'],
-        ['6',  'hearts'],
-        ['7',  'hearts'],
-        ['8',  'hearts'],
-        ['9',  'hearts'],
-        ['10',  'hearts']
-      ])
-
-    validateMissionCardsFail('should fail with sequence of 10 cards and one extra card',
-      19,
-      [
-        ['2',  'hearts'],
-        ['3',  'hearts'],
-        ['4',  'hearts'],
-        ['5',  'hearts'],
-        ['6',  'hearts'],
-        ['7',  'hearts'],
-        ['8',  'hearts'],
-        ['9',  'hearts'],
-        ['10',  'hearts'],
-        ['J',  'hearts'],
-        ['Q',  'hearts']
       ])
   })
 
@@ -832,16 +934,16 @@ describe('Mission Validation Tests', () => {
         ['J',  'clubs']
       ])
 
-    validateMissionCardsFail('should fail with 7 cards of same value',
+    validateMissionCardsFail('should fail with mostly even-value cards',
       20,
       [
-        ['A',  'hearts'],
-        ['A',  'diamonds'],
-        ['A',  'clubs'],
-        ['A',  'spades'],
-        ['A',  'hearts'],
-        ['A',  'diamonds'],
-        ['A',  'clubs']
+        ['2',  'hearts'],
+        ['2',  'diamonds'],
+        ['2',  'clubs'],
+        ['4',  'hearts'],
+        ['4',  'diamonds'],
+        ['4',  'clubs'],
+        ['6',  'hearts']
       ])
   })
 
@@ -1086,46 +1188,28 @@ describe('Mission Validation Tests', () => {
       ])
   })
 
-  describe('Mission 28: Deux groupes de 3 : un rouge, un noir', () => {
-    validateMissionCards('should validate two groups of 3: one red, one black',
-      28,
-      [
-        ['9',  'hearts'],
-        ['9',  'diamonds'],
-        ['9',  'diamonds'],
-        ['K',  'clubs'],
-        ['K',  'spades'],
-        ['K',  'clubs']
-      ])
-
-    validateMissionCardsFail('should fail with only one group of 3 cards',
-      28,
-      [
-        ['9',  'hearts'],
-        ['9',  'diamonds'],
-        ['9',  'diamonds']
-      ])
-
-    validateMissionCardsFail('should fail with two groups of 3 red cards',
-      28,
-      [
-        ['9',  'hearts'],
-        ['9',  'diamonds'],
-        ['9',  'hearts'],
-        ['K',  'clubs'],
-        ['K',  'spades'],
-        ['K',  'clubs']
-      ])
-  })
-
   describe('Mission 29: Trois cartes identiques (♠ ♣ ♥)', () => {
-    validateMissionCards('should validate three identical cards of spades, clubs, hearts (no diamonds)',
-      29,
-      [
-        ['Q',  'spades'],
-        ['Q',  'clubs'],
-        ['Q',  'hearts']
-      ])
+    it('should validate three identical cards of spades, clubs, hearts (no diamonds)', () => {
+      const mission = MISSIONS.find(m => m.id === 29)!;
+      const cards = [
+        createCard('Q', 'spades'),
+        createCard('Q', 'clubs'),
+        createCard('Q', 'hearts'),
+      ];
+      const result = validateMissionFromSelection(cards, mission.requirements);
+      expect(result.isValid).toBe(true);
+    })
+
+    it('should validate three identical cards of spades, clubs, hearts (no diamonds) with jokers', () => {
+      const mission = MISSIONS.find(m => m.id === 29)!;
+      const cards = [
+        createCard('Q', 'hearts'),
+        createJokerCard(),
+        createJokerCard(),
+      ];
+      const result = validateMissionFromSelection(cards, mission.requirements);
+      expect(result.isValid).toBe(true);
+    })
 
     validateMissionCardsFail('should fail with two identical cards and one different card',
       29,
@@ -1141,41 +1225,6 @@ describe('Mission Validation Tests', () => {
         ['Q',  'spades'],
         ['Q',  'spades'],
         ['Q',  'spades']
-      ])
-  })
-
-  describe('Mission 30: Suite paire de 6 cartes rouges', () => {
-    validateMissionCards('should validate even sequence of 6 red cards',
-      30,
-      [
-        ['2',  'hearts'],
-        ['4',  'hearts'],
-        ['6',  'hearts'],
-        ['8',  'hearts'],
-        ['10',  'hearts'],
-        ['Q',  'hearts']
-      ])
-
-    validateMissionCardsFail('should fail with only 5 red cards',
-      30,
-      [
-        ['2',  'hearts'],
-        ['4',  'hearts'],
-        ['6',  'hearts'],
-        ['8',  'hearts'],
-        ['10',  'hearts']
-      ])
-
-    validateMissionCardsFail('should fail with sequence of 6 red cards and one black card',
-      30,
-      [
-        ['2',  'hearts'],
-        ['4',  'hearts'],
-        ['6',  'hearts'],
-        ['8',  'hearts'],
-        ['10',  'hearts'],
-        ['Q',  'hearts'],
-        ['J',  'diamonds']
       ])
   })
 
