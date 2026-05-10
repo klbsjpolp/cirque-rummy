@@ -7,7 +7,7 @@ describe('Debug Mission Test', () => {
   it('should test just Mission 1 basic case', () => {
     console.log('🔍 Starting debug test for Mission 1');
 
-    const mission = MISSIONS.find(m => m.id === 1);
+    const mission = MISSIONS.find(m => m.id === 1)!;
     console.log('📋 Mission found:', mission);
 
     const cards = [

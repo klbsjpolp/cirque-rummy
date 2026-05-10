@@ -40,8 +40,8 @@ const createMockGameState = () => {
     discardPile: [],
     isGameStarted: true,
     isGameOver: false,
-    winner: null,
-    gameHistory: [],
+    winner: null as string | null,
+    gameHistory: [] as string[],
     gameMode: 'pvp' as const,
     isAITurn: false
   }

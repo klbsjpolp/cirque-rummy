@@ -23,7 +23,7 @@ function shuffleArray<T>(array: T[]): T[] {
 
 type NormalCardToCreate = [CardValue, CardSuit]
 function validateMissionCards(describe: string, missionId: number, cardsToCreate: NormalCardToCreate[], postChecks?: (usedCombinaisons: UsedCombinations) => void) {
-  const mission = MISSIONS.find(m => m.id === missionId);
+  const mission = MISSIONS.find(m => m.id === missionId)!;
   const cards = shuffleArray(cardsToCreate).map(c => createCard(c[0], c[1]));
 
   // Validate original mission
@@ -40,7 +40,7 @@ function validateMissionCards(describe: string, missionId: number, cardsToCreate
 }
 
 function validateMissionCardsFail(describe: string, missionId: number, cardsToCreate: NormalCardToCreate[]) {
-  const mission = MISSIONS.find(m => m.id === missionId);
+  const mission = MISSIONS.find(m => m.id === missionId)!;
   const cards = shuffleArray(cardsToCreate).map(c => createCard(c[0], c[1]));
 
   // Only validate that mission fails without jokers to avoid exponential complexity

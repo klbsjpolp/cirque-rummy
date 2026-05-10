@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {findAllValidCombinations, isNormalCard, validateMissionFromSelection} from '../utils/cardUtils'
 import { createCard, createJokerCard } from './testUtils'
-import {MissionRequirements} from "@/types/game.ts";
+import {Card, MissionRequirements} from "@/types/game.ts";
 
 describe('New Validation System Tests', () => {
   describe('findAllValidCombinations', () => {
@@ -286,7 +286,7 @@ describe('New Validation System Tests', () => {
     })
 
     it('should handle empty card selection', () => {
-      const cards = []
+      const cards: Card[] = []
 
       const requirements = {
         groups: 1,
