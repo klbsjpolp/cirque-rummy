@@ -4,12 +4,15 @@ import { Mission } from '../types/game';
 type Shape = {
   kind: 'group' | 'seq';
   count: number;
-  constraint?: string;
-  constraintColor?: string;
+  cornerSuit?: string;
+  cornerSuits?: string[];
+  values?: string[];
 };
 
 const RED = '#c62b2b';
 const BLACK = '#1a1a1a';
+
+const suitColor = (s: string) => (s.includes('♥') || s.includes('♦')) ? RED : BLACK;
 
 function missionToShapes(mission: Mission): Shape[] {
   const G = (count: number, extra: Partial<Shape> = {}): Shape => ({ kind: 'group', count, ...extra });
@@ -21,7 +24,6 @@ function missionToShapes(mission: Mission): Shape[] {
   const sequences = reqs.sequences ?? 0;
   const spec = reqs.specificRequirements;
 
-  // Specific-requirement overrides — built from mission semantics.
   switch (spec) {
     case 'groups_of_4':
       return [G(4), G(4)];
@@ -32,31 +34,31 @@ function missionToShapes(mission: Mission): Shape[] {
     case 'two_groups_3_one_group_4':
       return [G(3), G(3), G(4)];
     case '7_same_suit':
-      return [G(7, { constraint: '♠', constraintColor: BLACK })];
+      return [G(7, { cornerSuit: '♠' })];
     case 'sequence_8_max_2_suits':
       return [S(8)];
     case 'sequence_A_to_9':
-      return [S(9)];
+      return [S(9, { values: ['A', '2', '3', '4', '5', '6', '7', '8', '9'] })];
     case 'seven_odd_cards':
-      return [G(7)];
+      return [G(7, { values: ['A', '3', '5', '7', '9', 'J', 'K'] })];
     case 'full_suit_A_to_K':
-      return [S(13, { constraint: '♠', constraintColor: BLACK })];
+      return [S(13, { cornerSuit: '♠', values: ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'] })];
     case 'hearts_7_8_9_10':
-      return [S(4, { constraint: '♥', constraintColor: RED })];
+      return [S(4, { cornerSuit: '♥', values: ['7', '8', '9', '10'] })];
     case 'spades_and_clubs_sequences':
-      return [S(4, { constraint: '♠', constraintColor: BLACK }), S(4, { constraint: '♣', constraintColor: BLACK })];
+      return [S(4, { cornerSuit: '♠' }), S(4, { cornerSuit: '♣' })];
     case 'red_sequence_5':
-      return [S(5, { constraint: '♥', constraintColor: RED })];
+      return [S(5, { cornerSuit: '♥/♦' })];
     case 'red_even_sequence_6':
-      return [S(6, { constraint: '♥', constraintColor: RED })];
+      return [S(6, { cornerSuit: '♥/♦', values: ['2', '4', '6', '8', '10', 'Q'] })];
     case 'one_red_group_one_black_group':
-      return [G(3, { constraint: '♥', constraintColor: RED }), G(3, { constraint: '♠', constraintColor: BLACK })];
+      return [G(3, { cornerSuit: '♥/♦' }), G(3, { cornerSuit: '♠/♣' })];
     case 'three_suits_no_diamonds':
-      return [G(3)];
+      return [G(3, { cornerSuits: ['♠', '♣', '♥'] })];
     case 'different_suits':
-      return [S(5, { constraint: '♠', constraintColor: BLACK }), S(5, { constraint: '♥', constraintColor: RED })];
+      return [S(5, { cornerSuit: '♠' }), S(5, { cornerSuit: '♥' })];
     case 'same_suit':
-      return [S(minSeq, { constraint: '♥', constraintColor: RED })];
+      return [S(minSeq, { cornerSuit: '♥' })];
   }
 
   // Generic: groups + sequences combos
@@ -76,11 +78,13 @@ const MissionTarget: React.FC<Props> = ({ mission, compact = false }) => {
   const shapes = missionToShapes(mission);
   if (!shapes.length) return null;
 
-  const chipW = compact ? 18 : 24;
-  const chipH = compact ? 26 : 34;
+  const chipW = compact ? 20 : 26;
+  const chipH = compact ? 28 : 36;
   const gap = compact ? 3 : 4;
   const groupGap = compact ? 12 : 18;
   const arrowSize = compact ? 12 : 15;
+  const cornerFs = compact ? 8 : 9;
+  const valueFs = compact ? 11 : 13;
 
   return (
     <div style={{ display: 'flex', alignItems: 'flex-end', flexWrap: 'wrap', gap: groupGap }}>
@@ -89,7 +93,6 @@ const MissionTarget: React.FC<Props> = ({ mission, compact = false }) => {
         const arrowColor = isGroup ? '#b07c1a' : '#1f6a4e';
         const chipBg = isGroup ? '#fde9b8' : '#c8ecdd';
         const chipBorder = isGroup ? '#c09233' : '#2d8f6b';
-        const constraintColor = shape.constraintColor || (isGroup ? '#7a5410' : '#1f6a4e');
 
         return (
           <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -119,21 +122,38 @@ const MissionTarget: React.FC<Props> = ({ mission, compact = false }) => {
               </div>
             )}
             <div style={{ display: 'flex', gap }}>
-              {Array.from({ length: shape.count }).map((_, j) => (
-                <div key={j} style={{
-                  width: chipW, height: chipH, borderRadius: 3,
-                  background: chipBg,
-                  border: `1px solid ${chipBorder}`,
-                  boxShadow: 'inset 0 -2px 0 rgba(0,0,0,0.08)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: Math.min(chipW - 6, chipH - 12),
-                  color: constraintColor,
-                  fontWeight: 700, lineHeight: 1,
-                  fontFamily: 'Georgia, serif',
-                }}>
-                  {shape.constraint || ''}
-                </div>
-              ))}
+              {Array.from({ length: shape.count }).map((_, j) => {
+                const corner = shape.cornerSuits?.[j] ?? shape.cornerSuit;
+                const value = shape.values?.[j];
+                return (
+                  <div key={j} style={{
+                    width: chipW, height: chipH, borderRadius: 3,
+                    background: chipBg,
+                    border: `1px solid ${chipBorder}`,
+                    boxShadow: 'inset 0 -2px 0 rgba(0,0,0,0.08)',
+                    position: 'relative',
+                    fontFamily: 'Georgia, serif',
+                  }}>
+                    {corner && (
+                      <div style={{
+                        position: 'absolute', top: 1, left: 2,
+                        fontSize: cornerFs, lineHeight: 1,
+                        color: suitColor(corner),
+                        fontWeight: 700, whiteSpace: 'nowrap',
+                      }}>{corner}</div>
+                    )}
+                    {value && (
+                      <div style={{
+                        position: 'absolute', left: 0, right: 0, bottom: 0,
+                        top: corner ? cornerFs + 2 : 0,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: valueFs, fontWeight: 800,
+                        color: BLACK, lineHeight: 1,
+                      }}>{value}</div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         );
