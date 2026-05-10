@@ -2,7 +2,7 @@ import React from 'react';
 import { Mission } from '../types/game';
 
 type Shape = {
-  kind: 'group' | 'seq';
+  kind: 'group' | 'seq' | 'free';
   count: number;
   cornerSuit?: string;
   cornerSuits?: string[];
@@ -17,6 +17,7 @@ const suitColor = (s: string) => (s.includes('♥') || s.includes('♦')) ? RED 
 function missionToShapes(mission: Mission): Shape[] {
   const G = (count: number, extra: Partial<Shape> = {}): Shape => ({ kind: 'group', count, ...extra });
   const S = (count: number, extra: Partial<Shape> = {}): Shape => ({ kind: 'seq', count, ...extra });
+  const F = (count: number, extra: Partial<Shape> = {}): Shape => ({ kind: 'free', count, ...extra });
 
   const reqs = mission.requirements;
   const minSeq = reqs.minSequenceLength ?? 3;
@@ -34,13 +35,13 @@ function missionToShapes(mission: Mission): Shape[] {
     case 'two_groups_3_one_group_4':
       return [G(3), G(3), G(4)];
     case '7_same_suit':
-      return [G(7)];
+      return [F(7, { values: Array(7).fill('?') })];
     case 'sequence_8_max_2_suits':
       return [S(8)];
     case 'sequence_A_to_9':
       return [S(9, { values: ['A', '2', '3', '4', '5', '6', '7', '8', '9'] })];
     case 'seven_odd_cards':
-      return [G(7, { values: ['A', '3', '5', '7', '9', 'J', 'K'] })];
+      return [F(7, { values: ['A', '3', '5', '7', '9', 'J', 'K'] })];
     case 'full_suit_A_to_K':
       return [S(13, { values: ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'] })];
     case 'hearts_7_8_9_10':
@@ -90,13 +91,16 @@ const MissionTarget: React.FC<Props> = ({ mission, compact = false }) => {
     <div style={{ display: 'flex', alignItems: 'flex-end', flexWrap: 'wrap', gap: groupGap }}>
       {shapes.map((shape, i) => {
         const isGroup = shape.kind === 'group';
+        const isFree = shape.kind === 'free';
         const arrowColor = isGroup ? '#b07c1a' : '#1f6a4e';
-        const chipBg = isGroup ? '#fde9b8' : '#c8ecdd';
-        const chipBorder = isGroup ? '#c09233' : '#2d8f6b';
+        const chipBg = isFree ? '#ece5d3' : isGroup ? '#fde9b8' : '#c8ecdd';
+        const chipBorder = isFree ? '#a89c7c' : isGroup ? '#c09233' : '#2d8f6b';
 
         return (
           <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            {isGroup ? (
+            {isFree ? (
+              <div style={{ height: arrowSize + 1, marginBottom: 3 }} />
+            ) : isGroup ? (
               <div style={{ display: 'flex', gap, marginBottom: 3 }}>
                 {Array.from({ length: shape.count }).map((_, j) => (
                   <div key={j} style={{
