@@ -13,7 +13,6 @@ export type SpecificRequirement =
   | 'sequence_A_to_9'
   | 'seven_odd_cards'
   | 'different_suits'
-  | 'pairs'
   | 'three_groups_of_4'
   | 'full_suit_A_to_K'
   | 'hearts_7_8_9_10'
