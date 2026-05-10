@@ -1,26 +1,27 @@
 
 import { useState, useEffect } from 'react';
-import {GameState, Player, Card, Combination, NormalCard} from '../types/game';
+import {GameState, Player, Card, Combination} from '../types/game';
 import {
   createDeck,
   isValidGroup,
   isValidSequence,
   isJokerCard,
-  isNormalCard,
   validateMissionFromSelection,
-  findAllValidCombinations
+  findAllValidCombinations,
+  getSuitSymbol
 } from '../utils/cardUtils';
 import { MISSIONS } from '../data/missions';
 import { AIPlayer } from '../utils/aiPlayer';
+import {
+  canAddToExistingCombination,
+  isMissionCompleted,
+  pickRandomMissionId
+} from '../utils/gameLogic';
 
 const STORAGE_KEY = 'cirque-rummy-game-state';
 
-const getRandomMission = (completedMissions: number[]): number => {
-  const availableMissions = MISSIONS.filter(mission => !completedMissions.includes(mission.id));
-  if (availableMissions.length === 0) return 1; // Fallback, should not happen
-  const randomIndex = Math.floor(Math.random() * availableMissions.length);
-  return availableMissions[randomIndex].id;
-};
+const getRandomMission = (completedMissions: number[]): number =>
+  pickRandomMissionId(MISSIONS, completedMissions);
 
 const createPlayer = (id: string, name: string): Player => ({
   id,
@@ -412,31 +413,6 @@ export const useGameState = () => {
     });
   };
 
-  // Helper function to check if cards can be added to an existing combination
-  const canAddToExistingCombination = (cardsToAdd: Card[], combination: Combination): boolean => {
-    // For groups: check if all cards have the same value as the group
-    if (combination.type === 'group') {
-      const existingValue = combination.cards.find(c => isNormalCard(c))?.value;
-      if (!existingValue) return false;
-
-      return cardsToAdd.every(card => {
-        if (isJokerCard(card)) return true; // Jokers can be added to any group
-        return isNormalCard(card) && card.value === existingValue;
-      });
-    }
-
-    // For sequences: check if cards can extend the sequence
-    if (combination.type === 'sequence') {
-      // This is a simplified check - you might want to implement more sophisticated logic
-      // to check if the cards can extend the sequence at either end
-      const combinedCards = [...combination.cards, ...cardsToAdd];
-      return isValidSequence(combinedCards);
-    }
-
-    return false;
-  };
-
-
   const addToExistingCombination = (cardIds: string[], combinationId: string, targetPlayerId?: string) => {
     const currentPlayer = gameState.players[gameState.currentPlayerIndex];
 
@@ -541,161 +517,7 @@ export const useGameState = () => {
     const mission = MISSIONS.find(m => m.id === player.currentMission);
     if (!mission) return;
 
-    const { requirements } = mission;
-    const { combinations } = player;
-
-    let isCompleted = false;
-
-    // Helper functions
-    const getAllCards = () => combinations.flatMap(c => c.cards);
-    const getGroups = () => combinations.filter(c => c.type === 'group');
-    const getSequences = () => combinations.filter(c => c.type === 'sequence');
-    const isRedCard = (card: NormalCard) => card.suit === 'hearts' || card.suit === 'diamonds';
-    const isBlackCard = (card: NormalCard) => card.suit === 'spades' || card.suit === 'clubs';
-
-    if (requirements.specificRequirements === 'free_choice') {
-      // Mission 12: choose a previously completed mission
-      isCompleted = player.completedMissions.length > 0;
-    } else if (requirements.specificRequirements === '7_same_suit') {
-      // Mission 7: 7 cards of same suit
-      const suitCounts = combinations.reduce((acc, combo) => {
-        combo.cards.forEach(card => {
-          if (isNormalCard(card)) {
-            acc[card.suit] = (acc[card.suit] || 0) + 1;
-          }
-        });
-        return acc;
-      }, {} as Record<string, number>);
-
-      isCompleted = Object.values(suitCounts).some(count => count >= 7);
-    } else if (requirements.specificRequirements === 'group_4_sequence_4') {
-      // Mission 13: One group of 4 + one sequence of 4
-      const groups = getGroups();
-      const sequences = getSequences();
-      isCompleted = groups.some(g => g.cards.length === 4) && sequences.some(s => s.cards.length >= 4);
-    } else if (requirements.specificRequirements === 'groups_of_4') {
-      // Mission 14: Two groups of 4
-      const groups = getGroups();
-      const groupsOf4 = groups.filter(g => g.cards.length === 4);
-      isCompleted = groupsOf4.length >= 2;
-    } else if (requirements.specificRequirements === 'sequence_8_max_2_suits') {
-      // Mission 16: Sequence of 8 with max 2 suits
-      const sequences = getSequences();
-      isCompleted = sequences.some(seq => {
-        if (seq.cards.length < 8) return false;
-        const suits = new Set(seq.cards.filter(c => isNormalCard(c)).map(c => c.suit));
-        return suits.size <= 2;
-      });
-    } else if (requirements.specificRequirements === 'two_groups_3_one_group_4') {
-      // Mission 17: Two groups of 3 + one group of 4
-      const groups = getGroups();
-      const groupsOf3 = groups.filter(g => g.cards.length === 3);
-      const groupsOf4 = groups.filter(g => g.cards.length === 4);
-      isCompleted = groupsOf3.length >= 2 && groupsOf4.length >= 1;
-    } else if (requirements.specificRequirements === 'sequence_A_to_9') {
-      // Mission 19: Sequence A to 9 (any suits)
-      const allCards = getAllCards().filter(c => isNormalCard(c));
-      const values = ['A', '2', '3', '4', '5', '6', '7', '8', '9'];
-      const hasAllValues = values.every(val => allCards.some(card => card.value === val));
-      isCompleted = hasAllValues && allCards.length >= 9;
-    } else if (requirements.specificRequirements === 'seven_odd_cards') {
-      // Mission 20: Seven odd cards (A, 3, 5, 7, 9, J, K)
-      const allCards = getAllCards().filter(c => isNormalCard(c));
-      const oddValues = ['A', '3', '5', '7', '9', 'J', 'K'];
-      const oddCards = allCards.filter(card => oddValues.includes(card.value));
-      isCompleted = oddCards.length >= 7;
-    } else if (requirements.specificRequirements === 'different_suits') {
-      // Mission 21: Two sequences of 5, different suits
-      const sequences = getSequences().filter(s => s.cards.length >= 5);
-      if (sequences.length >= 2) {
-        const suits1 = new Set(sequences[0].cards.filter(c => isNormalCard(c)).map(c => c.suit));
-        const suits2 = new Set(sequences[1].cards.filter(c => isNormalCard(c)).map(c => c.suit));
-        const intersection = new Set([...suits1].filter(x => suits2.has(x)));
-        isCompleted = intersection.size === 0;
-      }
-    } else if (requirements.specificRequirements === 'pairs') {
-      // Mission 22: 4 groups of 2 cards (pairs)
-      const groups = getGroups();
-      const pairs = groups.filter(g => g.cards.length === 2);
-      isCompleted = pairs.length >= 4;
-    } else if (requirements.specificRequirements === 'three_groups_of_4') {
-      // Mission 23: Three groups of 4
-      const groups = getGroups();
-      const groupsOf4 = groups.filter(g => g.cards.length === 4);
-      isCompleted = groupsOf4.length >= 3;
-    } else if (requirements.specificRequirements === 'full_suit_A_to_K') {
-      // Mission 24: Full suit A to K
-      const sequences = getSequences();
-      isCompleted = sequences.some(seq => {
-        if (seq.cards.length < 13) return false;
-        const nonJokerCards = seq.cards.filter(c => isNormalCard(c));
-        const suits = new Set(nonJokerCards.map(c => c.suit));
-        return suits.size === 1;
-      });
-    } else if (requirements.specificRequirements === 'hearts_7_8_9_10') {
-      // Mission 25: 7-8-9-10 of hearts
-      const allCards = getAllCards().filter(c => isNormalCard(c));
-      const heartsCards = allCards.filter(c => c.suit === 'hearts');
-      const requiredValues = ['7', '8', '9', '10'];
-      isCompleted = requiredValues.every(val => heartsCards.some(card => card.value === val));
-    } else if (requirements.specificRequirements === 'spades_and_clubs_sequences') {
-      // Mission 26: Two sequences of 4: one spades, one clubs
-      const sequences = getSequences().filter(s => s.cards.length >= 4);
-      const spadesSeq = sequences.find(s => s.cards.filter(c => isNormalCard(c)).every(c => c.suit === 'spades'));
-      const clubsSeq = sequences.find(s => s.cards.filter(c => isNormalCard(c)).every(c => c.suit === 'clubs'));
-      isCompleted = !!spadesSeq && !!clubsSeq;
-    } else if (requirements.specificRequirements === 'red_sequence_5') {
-      // Mission 27: Sequence of 5 red cards
-      const sequences = getSequences();
-      isCompleted = sequences.some(seq => {
-        if (seq.cards.length < 5) return false;
-        const nonJokerCards = seq.cards.filter(c => isNormalCard(c));
-        return nonJokerCards.length >= 5 && nonJokerCards.every(c => isRedCard(c));
-      });
-    } else if (requirements.specificRequirements === 'one_red_group_one_black_group') {
-      // Mission 28: Two groups of 3: one red, one black
-      const groups = getGroups().filter(g => g.cards.length >= 3);
-      const redGroup = groups.find(g => g.cards.filter(c => isNormalCard(c)).every(c => isRedCard(c)));
-      const blackGroup = groups.find(g => g.cards.filter(c => isNormalCard(c)).every(c => isBlackCard(c)));
-      isCompleted = !!redGroup && !!blackGroup;
-    } else if (requirements.specificRequirements === 'three_suits_no_diamonds') {
-      // Mission 29: Three identical cards (spades, clubs, hearts only)
-      const groups = getGroups();
-      isCompleted = groups.some(g => {
-        if (g.cards.length < 3) return false;
-        const nonJokerCards = g.cards.filter(c => isNormalCard(c));
-        const suits = new Set(nonJokerCards.map(c => c.suit));
-        return suits.has('spades') && suits.has('clubs') && suits.has('hearts') && !suits.has('diamonds');
-      });
-    } else if (requirements.specificRequirements === 'red_even_sequence_6') {
-      // Mission 30: Even sequence of 6 red cards (2,4,6,8,10,Q)
-      const allCards = getAllCards().filter(isNormalCard).filter(isRedCard);
-      const evenValues = ['2', '4', '6', '8', '10', 'Q'];
-      isCompleted = evenValues.every(val => allCards.some(card => card.value === val));
-    } else {
-      // Standard missions
-      const groups = getGroups();
-      const sequences = getSequences();
-
-      const hasRequiredGroups = !requirements.groups || groups.length >= requirements.groups;
-      const hasRequiredSequences = !requirements.sequences || sequences.length >= requirements.sequences;
-
-      let hasMinSequenceLength = true;
-      if (requirements.minSequenceLength) {
-        hasMinSequenceLength = sequences.some(seq => seq.cards.length >= requirements.minSequenceLength!);
-      }
-
-      let hasSameSuitRequirement = true;
-      if (requirements.specificRequirements === 'same_suit') {
-        hasSameSuitRequirement = sequences.some(seq => {
-          const nonJokerCards = seq.cards.filter(c => isNormalCard(c));
-          return nonJokerCards.length >= (requirements.minSequenceLength || 3) &&
-                 nonJokerCards.every(c => c.suit === nonJokerCards[0].suit);
-        });
-      }
-
-      isCompleted = hasRequiredGroups && hasRequiredSequences && hasMinSequenceLength && hasSameSuitRequirement;
-    }
+    const isCompleted = isMissionCompleted(player, mission);
 
     if (isCompleted) {
       player.completedMissions.push(player.currentMission);
@@ -805,15 +627,4 @@ export const useGameState = () => {
     resetGame,
     reorderCards
   };
-};
-
-// Helper function (need to import from cardUtils)
-const getSuitSymbol = (suit: string): string => {
-  switch (suit) {
-    case 'hearts': return '♥';
-    case 'diamonds': return '♦';
-    case 'clubs': return '♣';
-    case 'spades': return '♠';
-    default: return '';
-  }
 };
