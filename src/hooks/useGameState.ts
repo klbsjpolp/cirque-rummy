@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from 'react';
-import {GameState, Player, Card, Combination} from '../types/game';
+import {GameState, Player, Card, Combination, Mission} from '../types/game';
 import {
   createDeck,
   isValidGroup,
@@ -314,8 +314,10 @@ export const useGameState = () => {
 
       newState.gameHistory.push(`${currentPlayer.name} présente ${description} pour la mission`);
 
-      // Check if mission is completed
-      checkMissionCompletion(newState, currentPlayer);
+      // La validation ci-dessus a vérifié la mission entière sur cette sélection :
+      // c'est donc elle qui crédite la mission. Rejouer une seconde validation sur
+      // la table pouvait la refuser et consommer les cartes pour rien.
+      creditMission(newState, currentPlayer, mission);
 
       return newState;
     });
@@ -513,25 +515,27 @@ export const useGameState = () => {
     });
   };
 
+  const creditMission = (gameState: GameState, player: Player, mission: Mission) => {
+    player.completedMissions.push(mission.id);
+    gameState.gameHistory.push(`🎉 ${player.name} complète la mission ${mission.id}!`);
+
+    // Check win condition - only end game if player completes 7 missions
+    if (player.completedMissions.length >= 7) {
+      gameState.isGameOver = true;
+      gameState.winner = player.name;
+      gameState.gameHistory.push(`🏆 ${player.name} remporte la partie!`);
+    } else {
+      // Assign a new random mission that hasn't been completed yet
+      player.currentMission = getRandomMission(player.completedMissions);
+    }
+  };
+
   const checkMissionCompletion = (gameState: GameState, player: Player) => {
     const mission = MISSIONS.find(m => m.id === player.currentMission);
     if (!mission) return;
 
-    const isCompleted = isMissionCompleted(player, mission);
-
-    if (isCompleted) {
-      player.completedMissions.push(player.currentMission);
-      gameState.gameHistory.push(`🎉 ${player.name} complète la mission ${mission.id}!`);
-
-      // Check win condition - only end game if player completes 7 missions
-      if (player.completedMissions.length >= 7) {
-        gameState.isGameOver = true;
-        gameState.winner = player.name;
-        gameState.gameHistory.push(`🏆 ${player.name} remporte la partie!`);
-      } else {
-        // Assign a new random mission that hasn't been completed yet
-        player.currentMission = getRandomMission(player.completedMissions);
-      }
+    if (isMissionCompleted(player, mission)) {
+      creditMission(gameState, player, mission);
     }
   };
 
