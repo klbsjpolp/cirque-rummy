@@ -12,9 +12,7 @@ const createPlayer = (id: string, name: string, hand: Card[] = []): Player => ({
   completedMissions: [],
   score: 0,
   combinations: [],
-  isCurrentMissionCompleted() {
-    return this.completedMissions.includes(this.currentMission);
-  },
+  missionCompletedThisRound: false,
 });
 
 const createGameState = (players: Player[], deck: Card[], discardPile: Card[] = []): GameState => ({

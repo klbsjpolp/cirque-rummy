@@ -24,10 +24,8 @@ const createMockGameState = () => {
     completedMissions,
     score: 0,
     combinations: [],
-
-    isCurrentMissionCompleted(): boolean {
-      return true;
-    }
+    // Ces scénarios décrivent un joueur qui vient d'accomplir sa mission.
+    missionCompletedThisRound: true
   })
 
   return {
