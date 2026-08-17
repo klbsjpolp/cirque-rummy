@@ -1200,7 +1200,20 @@ describe('Mission Validation Tests', () => {
       expect(result.isValid).toBe(true);
     })
 
-    it('should validate three identical cards of spades, clubs, hearts (no diamonds) with jokers', () => {
+    it('should validate two real suits completed by a joker', () => {
+      const mission = MISSIONS.find(m => m.id === 29)!;
+      const cards = [
+        createCard('Q', 'spades'),
+        createCard('Q', 'clubs'),
+        createJokerCard(),
+      ];
+      const result = validateMissionFromSelection(cards, mission.requirements);
+      expect(result.isValid).toBe(true);
+    })
+
+    it('should reject a single real suit padded with jokers', () => {
+      // Mission 29 demande ♠ ♣ ♥ : avec une seule couleur visible, rien n'indique que
+      // les jokers ne sont pas des ♦, précisément la couleur interdite.
       const mission = MISSIONS.find(m => m.id === 29)!;
       const cards = [
         createCard('Q', 'hearts'),
@@ -1208,7 +1221,7 @@ describe('Mission Validation Tests', () => {
         createJokerCard(),
       ];
       const result = validateMissionFromSelection(cards, mission.requirements);
-      expect(result.isValid).toBe(true);
+      expect(result.isValid).toBe(false);
     })
 
     validateMissionCardsFail('should fail with two identical cards and one different card',

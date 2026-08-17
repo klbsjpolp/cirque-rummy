@@ -7,7 +7,7 @@ import {
   isValidSequence,
   isJokerCard,
   validateMissionFromSelection,
-  findAllValidCombinations,
+  findGroupsOnlyLayout,
   getSuitSymbol
 } from '../utils/cardUtils';
 import { MISSIONS } from '../data/missions';
@@ -346,46 +346,10 @@ export const useGameState = () => {
 
       if (cards.length !== cardIds.length) return prev;
 
-      // Find all valid combinations in the selected cards
-      const { groups } = findAllValidCombinations(cards);
-
-      // Try to find a combination of groups and sequences that uses ALL selected cards
-      let bestCombination: {cards: Card[], type: 'group' | 'sequence'}[] = [];
-      let allCardsUsed = false;
-
-      // Try different combinations of groups (sequences are not allowed after mission completion)
-      const tryGroupCombinations = (groupList: Card[][], currentCombination: Card[][], usedCardIds: Set<string>) => {
-        if (usedCardIds.size === cards.length) {
-          bestCombination = currentCombination.map(group => ({ cards: group, type: 'group' as const }));
-          allCardsUsed = true;
-          return true;
-        }
-
-        for (let i = 0; i < groupList.length; i++) {
-          const group = groupList[i];
-
-          // Check if this group has any cards already used
-          const hasUsedCard = group.some(card => usedCardIds.has(card.id));
-          if (hasUsedCard) continue;
-
-          // Try adding this group
-          const newUsedCardIds = new Set(usedCardIds);
-          group.forEach(card => newUsedCardIds.add(card.id));
-
-          const newCombination = [...currentCombination, group];
-
-          if (tryGroupCombinations(groupList.slice(i + 1), newCombination, newUsedCardIds)) {
-            return true;
-          }
-        }
-
-        return false;
-      };
-
-      // Try to find a valid combination using only groups
-      tryGroupCombinations(groups, [], new Set());
-
-      if (!allCardsUsed) return prev;
+      // Après la mission, seuls de nouveaux groupes sont permis : on cherche une
+      // disposition en groupes qui utilise toutes les cartes sélectionnées.
+      const bestCombination = findGroupsOnlyLayout(cards);
+      if (!bestCombination) return prev;
 
       // Remove cards from hand
       currentPlayer.hand = [...currentPlayer.hand];
