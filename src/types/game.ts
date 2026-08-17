@@ -63,9 +63,15 @@ export interface Player {
   score: number;
   combinations: Combination[];
 
-  // Méthode pour vérifier si la mission actuelle est complétée
-  isCurrentMissionCompleted(): boolean;
-
+  /**
+   * Le joueur a accompli sa mission dans la manche en cours : il peut étendre les
+   * combinaisons posées et former de nouveaux groupes jusqu'à la fin de la manche.
+   *
+   * C'est un fait de la manche, pas une propriété de la mission courante : une fois la
+   * mission créditée, le joueur en reçoit aussitôt une nouvelle, donc la comparer à
+   * `completedMissions` refermait la phase post-mission dans le même instant.
+   */
+  missionCompletedThisRound: boolean;
 }
 
 export interface GameState {
