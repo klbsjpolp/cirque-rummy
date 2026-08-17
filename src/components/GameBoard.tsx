@@ -490,7 +490,7 @@ const GameBoard: React.FC = () => {
 
   const handlePlay = () => {
     if (selectedCardIds.length < 3) return;
-    if (currentPlayer.isCurrentMissionCompleted()) {
+    if (currentPlayer.missionCompletedThisRound) {
       layEndOfRoundCombinations(selectedCardIds);
     } else {
       presentMissionCards(selectedCardIds);
@@ -595,7 +595,7 @@ const GameBoard: React.FC = () => {
 
         <TableCombos
           player={displayedPlayer}
-          canExtend={isDisplayedTurn && displayedPlayer.completedMissions.length > 0}
+          canExtend={isDisplayedTurn && displayedPlayer.missionCompletedThisRound}
           onExtend={handleExtend}
           selectedCount={selectedCardIds.length}
         />
@@ -604,7 +604,7 @@ const GameBoard: React.FC = () => {
           <div style={{ opacity: 0.85 }}>
             <TableCombos
               player={opponent}
-              canExtend={isDisplayedTurn && displayedPlayer.completedMissions.length > 0}
+              canExtend={isDisplayedTurn && displayedPlayer.missionCompletedThisRound}
               onExtend={handleExtend}
               selectedCount={selectedCardIds.length}
             />
@@ -686,7 +686,7 @@ const GameBoard: React.FC = () => {
         <ActionBar
           step={step}
           selectedCount={selectedCardIds.length}
-          missionDone={currentPlayer.isCurrentMissionCompleted()}
+          missionDone={currentPlayer.missionCompletedThisRound}
           onPlay={handlePlay}
           onDiscard={handleDiscard}
           onClear={clearSelection}
