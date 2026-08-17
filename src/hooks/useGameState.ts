@@ -31,11 +31,7 @@ const createPlayer = (id: string, name: string): Player => ({
   completedMissions: [],
   score: 0,
   combinations: [],
-
-  // Méthode pour vérifier si la mission actuelle est complétée
-  isCurrentMissionCompleted() {
-    return this.completedMissions.includes(this.currentMission);
-  }
+  missionCompletedThisRound: false
 });
 
 const initialGameState = (gameMode: 'pvp' | 'ai' = 'pvp'): GameState => {
@@ -68,12 +64,20 @@ const initialGameState = (gameMode: 'pvp' | 'ai' = 'pvp'): GameState => {
   };
 };
 
-// Helper function to restore Player methods after deserialization
-const restorePlayerMethods = (player: Omit<Player, 'isCurrentMissionCompleted'>): Player => ({
-  ...player,
-  isCurrentMissionCompleted() {
-    return this.completedMissions.includes(this.currentMission);
-  }
+// Une partie sauvegardée avant l'ajout d'un champ le retrouve ici. Les joueurs sont
+// des données pures, donc rien à reconstruire après JSON.parse.
+const migrateSavedState = (saved: GameState): GameState => ({
+  ...saved,
+  cardsDrawnThisTurn: saved.cardsDrawnThisTurn ?? 0,
+  hasDrawnThisTurn: saved.hasDrawnThisTurn ?? false,
+  mustDiscardToEndTurn: saved.mustDiscardToEndTurn ?? false,
+  lastDrawnCardId: saved.lastDrawnCardId ?? null,
+  players: saved.players.map(player => ({
+    ...player,
+    // Par défaut la phase post-mission est refermée : elle se rouvrira dès que la
+    // mission de la manche sera accomplie.
+    missionCompletedThisRound: player.missionCompletedThisRound ?? false
+  }))
 });
 
 export const useGameState = () => {
@@ -81,25 +85,7 @@ export const useGameState = () => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
-        const parsedState = JSON.parse(saved);
-        // Restore Player methods that are lost during JSON serialization
-        parsedState.players = parsedState.players.map(restorePlayerMethods);
-
-        // Handle backward compatibility: add missing fields
-        if (parsedState.cardsDrawnThisTurn === undefined) {
-          parsedState.cardsDrawnThisTurn = 0;
-        }
-        if (parsedState.hasDrawnThisTurn === undefined) {
-          parsedState.hasDrawnThisTurn = false;
-        }
-        if (parsedState.mustDiscardToEndTurn === undefined) {
-          parsedState.mustDiscardToEndTurn = false;
-        }
-        if (parsedState.lastDrawnCardId === undefined) {
-          parsedState.lastDrawnCardId = null;
-        }
-
-        return parsedState;
+        return migrateSavedState(JSON.parse(saved));
       } catch (error) {
         console.error('Erreur lors du chargement de la partie:', error);
       }
@@ -213,8 +199,7 @@ export const useGameState = () => {
       const currentPlayer = newState.players[newState.currentPlayerIndex];
 
       // Check if player has completed their mission and is trying to lay a new sequence
-      const hasCompletedMission = currentPlayer.completedMissions.length > 0;
-      if (hasCompletedMission && type === 'sequence') {
+      if (currentPlayer.missionCompletedThisRound && type === 'sequence') {
         // After mission completion, only new groups are allowed, not new sequences
         return prev;
       }
@@ -335,9 +320,8 @@ export const useGameState = () => {
         return prev; // Return unchanged state
       }
 
-      // Check if player has completed at least one mission
-      const hasCompletedMission = currentPlayer.completedMissions.length > 0;
-      if (!hasCompletedMission) return prev;
+      // La pose de fin de manche n'est ouverte qu'après la mission de *cette* manche.
+      if (!currentPlayer.missionCompletedThisRound) return prev;
 
       // Get cards from hand
       const cards = cardIds.map(id => 
@@ -380,107 +364,88 @@ export const useGameState = () => {
   };
 
   const addToExistingCombination = (cardIds: string[], combinationId: string, targetPlayerId?: string) => {
-    const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-
-    // Le joueur actuel doit avoir complété sa mission actuelle
-    if (!currentPlayer.isCurrentMissionCompleted()) {
-      setGameState(prev => ({
-        ...prev,
-        gameHistory: [...prev.gameHistory, `❌ ${currentPlayer.name} doit d'abord terminer sa mission pour étendre des combinaisons !`]
-      }));
-      return;
-    }
-
-    // Si on veut ajouter à une combinaison d'un adversaire
-    if (targetPlayerId && targetPlayerId !== currentPlayer.id) {
-      const targetPlayer = gameState.players.find(p => p.id === targetPlayerId);
-      if (!targetPlayer || !targetPlayer.isCurrentMissionCompleted()) {
-        setGameState(prev => ({
-          ...prev,
-          gameHistory: [...prev.gameHistory, `❌ L'adversaire doit aussi avoir terminé sa mission pour que vous puissiez étendre ses combinaisons !`]
-        }));
-        return;
-      }
-    }
-
-    // Reste de la logique existante...
-    const targetPlayer = targetPlayerId
-      ? gameState.players.find(p => p.id === targetPlayerId) || currentPlayer
-      : currentPlayer;
-
-    const targetCombination = targetPlayer.combinations.find(c => c.id === combinationId);
-    if (!targetCombination) {
-      setGameState(prev => ({
-        ...prev,
-        gameHistory: [...prev.gameHistory, `❌ Combinaison non trouvée !`]
-      }));
-      return;
-    }
-
-    const cardsToAdd = cardIds.map(id => {
-      const card = currentPlayer.hand.find(c => c.id === id);
-      if (!card) {
-        throw new Error(`Carte non trouvée dans la main : ${id}`);
-      }
-      return card;
-    });
-
-    if (!canAddToExistingCombination(cardsToAdd, targetCombination)) {
-      setGameState(prev => ({
-        ...prev,
-        gameHistory: [...prev.gameHistory, `❌ Impossible d'ajouter ces cartes à cette combinaison !`]
-      }));
-      return;
-    }
-
     setGameState(prev => {
-      const newGameState = { ...prev };
-      const newCurrentPlayer = { ...newGameState.players[newGameState.currentPlayerIndex] };
-      const newTargetPlayer = targetPlayerId
-        ? { ...newGameState.players.find(p => p.id === targetPlayerId)! }
-        : newCurrentPlayer;
+      const refuse = (reason: string): GameState => ({
+        ...prev,
+        gameHistory: [...prev.gameHistory, `❌ ${reason}`]
+      });
 
-      // Retirer les cartes de la main du joueur actuel
-      newCurrentPlayer.hand = newCurrentPlayer.hand.filter(card =>
-        !cardIds.includes(card.id)
-      );
+      const currentPlayer = prev.players[prev.currentPlayerIndex];
 
-      // Ajouter les cartes à la combinaison cible
-      const newCombination = {
-        ...targetCombination,
-        cards: [...targetCombination.cards, ...cardsToAdd]
-      };
+      // Le joueur actuel doit avoir accompli sa mission dans cette manche
+      if (!currentPlayer.missionCompletedThisRound) {
+        return refuse(`${currentPlayer.name} doit d'abord terminer sa mission pour étendre des combinaisons !`);
+      }
 
-      newTargetPlayer.combinations = newTargetPlayer.combinations.map(combo =>
-        combo.id === combinationId ? newCombination : combo
-      );
+      const targetPlayer = targetPlayerId
+        ? prev.players.find(p => p.id === targetPlayerId)
+        : currentPlayer;
 
-      // Mettre à jour les joueurs dans l'état
-      newGameState.players = newGameState.players.map(player => {
-        if (player.id === newCurrentPlayer.id) return newCurrentPlayer;
-        if (targetPlayerId && player.id === targetPlayerId) return newTargetPlayer;
-        return player;
+      if (!targetPlayer) return refuse('Joueur introuvable !');
+
+      // Étendre les combinaisons de l'adversaire exige qu'il ait aussi terminé la sienne
+      if (targetPlayer.id !== currentPlayer.id && !targetPlayer.missionCompletedThisRound) {
+        return refuse(`L'adversaire doit aussi avoir terminé sa mission pour que vous puissiez étendre ses combinaisons !`);
+      }
+
+      const targetCombination = targetPlayer.combinations.find(c => c.id === combinationId);
+      if (!targetCombination) return refuse('Combinaison non trouvée !');
+
+      const cardsToAdd = cardIds
+        .map(id => currentPlayer.hand.find(card => card.id === id))
+        .filter((card): card is Card => card !== undefined);
+
+      if (cardsToAdd.length !== cardIds.length) {
+        return refuse('Ces cartes ne sont pas dans votre main !');
+      }
+
+      if (!canAddToExistingCombination(cardsToAdd, targetCombination)) {
+        return refuse(`Impossible d'ajouter ces cartes à cette combinaison !`);
+      }
+
+      // Un seul passage sur les joueurs : quand on étend sa propre combinaison, la main
+      // et la combinaison changent sur le *même* joueur — les mettre à jour sur deux
+      // copies distinctes faisait disparaître les cartes sans agrandir la combinaison.
+      const removed = new Set(cardIds);
+      const players = prev.players.map(player => {
+        let updated = player;
+
+        if (player.id === currentPlayer.id) {
+          updated = { ...updated, hand: updated.hand.filter(card => !removed.has(card.id)) };
+        }
+
+        if (player.id === targetPlayer.id) {
+          updated = {
+            ...updated,
+            combinations: updated.combinations.map(combo =>
+              combo.id === combinationId
+                ? { ...combo, cards: [...combo.cards, ...cardsToAdd] }
+                : combo
+            )
+          };
+        }
+
+        return updated;
       });
 
       const cardsDesc = cardsToAdd.map(card =>
         isJokerCard(card) ? 'Joker' : `${card.value}${getSuitSymbol(card.suit)}`
       ).join(', ');
+      const targetDesc = targetPlayer.id === currentPlayer.id
+        ? ' à ses propres combinaisons'
+        : ` aux combinaisons de ${targetPlayer.name}`;
 
-      const targetDesc = targetPlayerId && targetPlayerId !== currentPlayer.id
-        ? ` aux combinaisons de ${newTargetPlayer.name}`
-        : ' à ses propres combinaisons';
-
-      newGameState.gameHistory = [
-        ...newGameState.gameHistory,
-        `${newCurrentPlayer.name} ajoute ${cardsDesc}${targetDesc}`
-      ];
-
-      return newGameState;
+      return {
+        ...prev,
+        players,
+        gameHistory: [...prev.gameHistory, `${currentPlayer.name} ajoute ${cardsDesc}${targetDesc}`]
+      };
     });
   };
 
   const creditMission = (gameState: GameState, player: Player, mission: Mission) => {
     player.completedMissions.push(mission.id);
+    player.missionCompletedThisRound = true;
     gameState.gameHistory.push(`🎉 ${player.name} complète la mission ${mission.id}!`);
 
     // Check win condition - only end game if player completes 7 missions
@@ -527,6 +492,7 @@ export const useGameState = () => {
     // Clear all combinations from all players
     gameState.players.forEach(player => {
       player.combinations = [];
+      player.missionCompletedThisRound = false;
     });
 
     // Create new deck and redistribute cards

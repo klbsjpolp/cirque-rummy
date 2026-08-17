@@ -11,10 +11,7 @@ describe('Game Flow Mechanics', () => {
     completedMissions: [],
     score: 0,
     combinations: [],
-
-    isCurrentMissionCompleted(): boolean {
-      return this.completedMissions.includes(this.currentMission);
-    }
+    missionCompletedThisRound: false
   })
 
   const createGameState = (players: Player[]): GameState => ({

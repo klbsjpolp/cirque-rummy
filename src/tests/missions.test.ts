@@ -13,9 +13,7 @@ describe('Mission System', () => {
     completedMissions: [],
     score: 0,
     combinations,
-    isCurrentMissionCompleted(): boolean {
-      return this.completedMissions.includes(this.currentMission)
-    }
+    missionCompletedThisRound: false
   })
 
   describe('Mission Data Structure', () => {
@@ -320,12 +318,14 @@ describe('Mission System', () => {
 
     it('should allow extending combinations after mission completion', () => {
       // This tests the rule from README: "Après mission accomplie : Une fois sa mission effectuée, le joueur peut continuer à..."
+      // La phase post-mission dépend de la manche en cours, pas de la mission
+      // courante : une mission créditée en remplace aussitôt une autre.
       const completedMissionPlayer = createTestPlayer([])
-      completedMissionPlayer.currentMission = 1
-      completedMissionPlayer.completedMissions = [1] // Has completed a mission
+      completedMissionPlayer.completedMissions = [1]
+      completedMissionPlayer.currentMission = 7
+      completedMissionPlayer.missionCompletedThisRound = true
 
-      expect(completedMissionPlayer.completedMissions.length).toBeGreaterThan(0)
-      expect(completedMissionPlayer.isCurrentMissionCompleted()).toBeTruthy()
+      expect(completedMissionPlayer.missionCompletedThisRound).toBe(true)
     })
 
     it('should require 7 completed missions to win', () => {
