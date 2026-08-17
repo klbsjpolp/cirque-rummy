@@ -1,5 +1,5 @@
 import { CardValue, Combination, MissionRequirements, NormalCard } from '../types/game';
-import { countJokers, normalCards, valuesMissingFrom } from './cards';
+import { CARD_SUITS, CARD_VALUES, countJokers, getCardValueNumber, getValueFromNumber, normalCards, valuesMissingFrom } from './cards';
 
 /**
  * L'unique moteur de règles des missions.
@@ -8,6 +8,10 @@ import { countJokers, normalCards, valuesMissingFrom } from './cards';
  * remplace n'importe quelle carte. Toutes les règles comptent donc les jokers
  * comme des cartes valides — les compter comme absents faisait qu'une mission
  * réussie avec un joker n'était jamais validée.
+ *
+ * Un joker ne remplace qu'*une* carte, et seulement dans la combinaison où il est
+ * posé : chaque règle compte donc les jokers de la combinaison qu'elle examine,
+ * jamais ceux de toute la table.
  *
  * `validateMissionFromSelection` (pose) et `isMissionCompleted` (validation)
  * passent tous deux par ici : il ne peut plus y avoir de désaccord entre les
@@ -31,6 +35,34 @@ const isSingleSuit = (combination: Combination): boolean => {
 const suitsOf = (combination: Combination): Set<string> =>
   new Set(normalCards(combination.cards).map(c => c.suit));
 
+/**
+ * Les valeurs réellement représentées par une combinaison, jokers résolus.
+ *
+ * Dans un groupe, un joker ne peut valoir que la valeur du groupe. Dans une suite,
+ * il bouche un trou interne, dont la valeur est déterminée ; ceux qui prolongent la
+ * suite à une extrémité restent ambigus et ne comptent donc pour aucune valeur.
+ */
+const resolvedValues = (combination: Combination): CardValue[] => {
+  const normals = normalCards(combination.cards);
+  const values = normals.map(c => c.value);
+  const jokers = countJokers(combination.cards);
+
+  if (jokers === 0 || normals.length === 0) return values;
+
+  if (combination.type === 'group') {
+    return [...values, ...Array<CardValue>(jokers).fill(values[0])];
+  }
+
+  const numbers = normals.map(c => getCardValueNumber(c.value));
+  const lowest = Math.min(...numbers);
+  const highest = Math.max(...numbers);
+  const gaps: CardValue[] = [];
+  for (let n = lowest + 1; n < highest; n++) {
+    if (!numbers.includes(n)) gaps.push(getValueFromNumber(n));
+  }
+  return [...values, ...gaps];
+};
+
 /** Deux combinaisons distinctes satisfaisant chacune un prédicat. */
 const hasDistinctPair = (
   combinations: Combination[],
@@ -44,9 +76,6 @@ export const combinationsSatisfyRequirements = (
   requirements: MissionRequirements,
   completedMissions: number[] = []
 ): boolean => {
-  const allCards = combinations.flatMap(c => c.cards);
-  const allNormals = normalCards(allCards);
-  const allJokers = countJokers(allCards);
   const groups = combinations.filter(c => c.type === 'group');
   const sequences = combinations.filter(c => c.type === 'sequence');
 
@@ -54,8 +83,11 @@ export const combinationsSatisfyRequirements = (
   const meetsCounts = (): boolean => {
     const enoughGroups = !requirements.groups || groups.length >= requirements.groups;
     const enoughSequences = !requirements.sequences || sequences.length >= requirements.sequences;
-    const longEnough = !requirements.minSequenceLength ||
-      sequences.some(s => s.cards.length >= requirements.minSequenceLength!);
+    // Les missions « deux suites de 4 », « trois suites de 4 », « deux suites de 6 »
+    // demandent que *toutes* les suites exigées atteignent la longueur, pas une seule.
+    const minLength = requirements.minSequenceLength;
+    const longEnough = !minLength ||
+      sequences.filter(s => s.cards.length >= minLength).length >= (requirements.sequences ?? 1);
     return enoughGroups && enoughSequences && longEnough;
   };
 
@@ -65,14 +97,22 @@ export const combinationsSatisfyRequirements = (
       // donc rien ne peut être présenté pour elle (voir validateMissionFromSelection).
       return completedMissions.length > 0;
 
-    case '7_same_suit': {
-      const perSuit = allNormals.reduce<Record<string, number>>((acc, card) => {
-        acc[card.suit] = (acc[card.suit] || 0) + 1;
-        return acc;
-      }, {});
-      const best = Math.max(0, ...Object.values(perSuit));
-      return best + allJokers >= 7;
-    }
+    case '7_same_suit':
+      // Les cartes réelles d'une couleur comptent où qu'elles soient posées, mais un
+      // joker ne peut valoir cette couleur que si la combinaison où il est posé ne
+      // montre aucune autre couleur — sinon un joker qui tient le rôle du 9♠ serait
+      // compté comme un cœur en même temps.
+      return CARD_SUITS.some(suit => {
+        const total = combinations.reduce((count, combination) => {
+          const normals = normalCards(combination.cards);
+          const ofSuit = normals.filter(card => card.suit === suit).length;
+          const usableJokers = normals.length > 0 && normals.every(card => card.suit === suit)
+            ? countJokers(combination.cards)
+            : 0;
+          return count + ofSuit + usableJokers;
+        }, 0);
+        return total >= 7;
+      });
 
     case 'group_4_sequence_4':
       return groups.some(g => g.cards.length === 4) &&
@@ -94,17 +134,25 @@ export const combinationsSatisfyRequirements = (
       return groups.filter(g => g.cards.length === 4).length >= 3;
 
     case 'sequence_A_to_9':
-      return allCards.length >= 9 &&
-             valuesMissingFrom(allNormals, A_TO_9) <= allJokers;
+      return combinations.some(c =>
+        c.cards.length >= 9 &&
+        valuesMissingFrom(normalCards(c.cards), A_TO_9) <= countJokers(c.cards)
+      );
 
     case 'seven_odd_cards':
-      return allNormals.filter(c => ODD_VALUES.includes(c.value)).length + allJokers >= 7;
+      // Un joker compte comme impair seulement s'il remplace une carte impaire.
+      return combinations
+        .flatMap(resolvedValues)
+        .filter(value => ODD_VALUES.includes(value))
+        .length >= 7;
 
-    case 'red_even_sequence_6': {
-      const reds = allNormals.filter(isRedCard);
-      return allCards.length >= 6 &&
-             valuesMissingFrom(reds, EVEN_VALUES) <= allJokers;
-    }
+    case 'red_even_sequence_6':
+      return combinations.some(c => {
+        const normals = normalCards(c.cards);
+        return c.cards.length >= 6 &&
+               normals.every(isRedCard) &&
+               valuesMissingFrom(normals, EVEN_VALUES) <= countJokers(c.cards);
+      });
 
     case 'different_suits': {
       // Deux suites d'au moins 5 cartes sans aucune couleur commune. On cherche
@@ -122,7 +170,8 @@ export const combinationsSatisfyRequirements = (
     }
 
     case 'full_suit_A_to_K':
-      return sequences.some(seq => seq.cards.length >= 13 && isSingleSuit(seq));
+      // Une couleur compte treize valeurs : ni plus, ni moins.
+      return sequences.some(seq => seq.cards.length === CARD_VALUES.length && isSingleSuit(seq));
 
     case 'hearts_7_8_9_10':
       return sequences.some(seq => {
@@ -162,7 +211,10 @@ export const combinationsSatisfyRequirements = (
       return groups.some(group => {
         const normals = normalCards(group.cards);
         if (normals.some(c => c.suit === 'diamonds')) return false;
+        // Au moins deux couleurs doivent être visibles : sinon un seul ♠ entouré de
+        // jokers suffirait, alors que rien ne dit que ces jokers ne sont pas des ♦.
         return group.cards.length >= 3 &&
+               suitsOf(group).size >= 2 &&
                suitsOf(group).size + countJokers(group.cards) >= 3;
       });
 

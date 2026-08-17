@@ -1,12 +1,9 @@
 import {Card, CardSuit, CardValue, NormalCard, MissionRequirements, Combination} from '../types/game';
-import {countJokers, getCardValueNumber, isJokerCard, isNormalCard} from './cards';
+import {CARD_SUITS, CARD_VALUES, countJokers, getCardValueNumber, isJokerCard, isNormalCard} from './cards';
 import {combinationsSatisfyRequirements} from './missionRules';
 
 // Réexportés ici : de nombreux modules et tests importent ces primitives via cardUtils.
-export {getCardValueNumber, isJokerCard, isNormalCard};
-
-export const CARD_VALUES: CardValue[] = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
-export const CARD_SUITS: CardSuit[] = ['hearts', 'diamonds', 'clubs', 'spades'];
+export {CARD_SUITS, CARD_VALUES, getCardValueNumber, isJokerCard, isNormalCard};
 
 export const createDeck = (): Card[] => {
   const deck: Card[] = [];
@@ -46,6 +43,9 @@ export const shuffleDeck = (deck: Card[]): Card[] => {
 
 export const isValidGroup = (cards: Card[]): boolean => {
   if (cards.length < 3) return false;
+  // Un groupe montre une couleur différente par carte : au-delà de quatre cartes,
+  // même complété par des jokers, il n'existe plus de couleur libre.
+  if (cards.length > CARD_SUITS.length) return false;
 
   // Tous de même valeur mais couleurs différentes
   const nonJokerCards = cards.filter(isNormalCard);
@@ -94,10 +94,17 @@ export const isValidSequence = (cards: Card[]): boolean => {
   // The remaining jokers can extend the sequence at the beginning or end
   if (gapsNeeded > jokerCount) return false;
 
-  // Check if the total sequence length makes sense
-  // We have sortedValues.length non-joker cards + jokerCount jokers = cards.length total
-  // This should form a consecutive sequence
-  return true;
+  // La suite occupe exactement `cards.length` rangs consécutifs : les jokers restants
+  // la prolongent à une extrémité. Il faut donc qu'un placement tienne dans A..K,
+  // sinon on accepterait une suite plus longue qu'une couleur (14 cartes) ou qui
+  // dépasse le roi.
+  const minValue = sortedValues[0];
+  const maxValue = sortedValues[sortedValues.length - 1];
+  const highestStart = CARD_VALUES.length - cards.length + 1;
+  const earliestStart = Math.max(1, maxValue - cards.length + 1);
+  const latestStart = Math.min(minValue, highestStart);
+
+  return earliestStart <= latestStart;
 };
 
 export const getSuitSymbol = (suit: CardSuit): string => {
@@ -111,190 +118,6 @@ export const getSuitSymbol = (suit: CardSuit): string => {
 
 export const getSuitColor = (suit: CardSuit): string => {
   return suit === 'hearts' || suit === 'diamonds' ? 'text-red-600' : 'text-gray-900';
-};
-
-// New unified validation function for missions
-export const validateMissionCards = (cards: Card[], missionRequirements: MissionRequirements): { isValid: boolean; combinations: { cards: Card[]; type: 'group' | 'sequence' }[] } => {
-  if (cards.length === 0) {
-    return { isValid: false, combinations: [] };
-  }
-
-  // Try to find the best combination of groups and sequences that satisfy the mission
-  return findBestCombination(cards, missionRequirements);
-};
-
-// Helper function to find the best combination of groups and sequences
-const findBestCombination = (cards: Card[], requirements: MissionRequirements): { isValid: boolean; combinations: { cards: Card[]; type: 'group' | 'sequence' }[] } => {
-  const { groups: requiredGroups = 0, sequences: requiredSequences = 0} = requirements;
-
-  // Generate all possible combinations of groups and sequences
-  const allPossibleGroups = findAllPossibleGroups(cards);
-  const allPossibleSequences = findAllPossibleSequences(cards);
-
-  // Try to find a combination that satisfies the requirements
-  return findValidCombination(
-    cards,
-    allPossibleGroups,
-    allPossibleSequences,
-    requiredGroups,
-    requiredSequences,
-    requirements
-  );
-};
-
-// Find all possible groups from the given cards
-const findAllPossibleGroups = (cards: Card[]): Card[][] => {
-  const groups: Card[][] = [];
-  const cardsByValue = new Map<string, Card[]>();
-
-  // Group cards by value
-  cards.forEach(card => {
-    if (isNormalCard(card)) {
-      const value = card.value;
-      if (!cardsByValue.has(value)) {
-        cardsByValue.set(value, []);
-      }
-      cardsByValue.get(value)!.push(card);
-    }
-  });
-
-  // Add jokers to each value group
-  const jokers = cards.filter(isJokerCard);
-
-  // Generate all possible groups (3 or more cards of same value)
-  cardsByValue.forEach((cardsOfValue) => {
-    // Try different combinations with jokers
-    for (let jokersUsed = 0; jokersUsed <= jokers.length; jokersUsed++) {
-      const totalCards = cardsOfValue.length + jokersUsed;
-      if (totalCards >= 3) {
-        // Create groups of different sizes
-        for (let groupSize = 3; groupSize <= totalCards && groupSize <= 4; groupSize++) {
-          if (groupSize <= cardsOfValue.length + jokersUsed) {
-            const group = [
-              ...cardsOfValue.slice(0, Math.min(groupSize - jokersUsed, cardsOfValue.length)),
-              ...jokers.slice(0, Math.min(jokersUsed, groupSize - cardsOfValue.length))
-            ];
-            if (group.length === groupSize && isValidGroup(group)) {
-              groups.push(group);
-            }
-          }
-        }
-      }
-    }
-  });
-
-  return groups;
-};
-
-// Find all possible sequences from the given cards
-const findAllPossibleSequences = (cards: Card[]): Card[][] => {
-  const sequences: Card[][] = [];
-  const cardsBySuit = new Map<CardSuit, NormalCard[]>();
-
-  // Group normal cards by suit
-  cards.filter(isNormalCard).forEach(card => {
-    const suit = card.suit;
-    if (!cardsBySuit.has(suit)) {
-      cardsBySuit.set(suit, []);
-    }
-    cardsBySuit.get(suit)!.push(card);
-  });
-
-  const jokers = cards.filter(isJokerCard);
-
-  // For each suit, try to build sequences
-  cardsBySuit.forEach((cardsOfSuit) => {
-    // Sort cards by value
-    const sortedCards = cardsOfSuit.sort((a, b) => getCardValueNumber(a.value) - getCardValueNumber(b.value));
-
-    // Try different sequence combinations with jokers
-    for (let startIdx = 0; startIdx < sortedCards.length; startIdx++) {
-      for (let endIdx = startIdx; endIdx < sortedCards.length; endIdx++) {
-        const baseCards = sortedCards.slice(startIdx, endIdx + 1);
-
-        // First try without jokers
-        if (baseCards.length >= 3 && isValidSequence(baseCards)) {
-          sequences.push([...baseCards]);
-        }
-
-        // Try adding jokers to make valid sequences
-        for (let jokersUsed = 1; jokersUsed <= jokers.length; jokersUsed++) {
-          const jokerCombinations = getCombinations(jokers, jokersUsed);
-          for (const jokerCombo of jokerCombinations) {
-            const sequenceCards = [...baseCards, ...jokerCombo];
-            if (sequenceCards.length >= 3 && isValidSequence(sequenceCards)) {
-              sequences.push(sequenceCards);
-            }
-          }
-        }
-      }
-    }
-  });
-
-  return sequences;
-};
-
-// Find a valid combination that satisfies the mission requirements
-const findValidCombination = (
-  allCards: Card[],
-  possibleGroups: Card[][],
-  possibleSequences: Card[][],
-  requiredGroups: number,
-  requiredSequences: number,
-  requirements: MissionRequirements
-): { isValid: boolean; combinations: { cards: Card[]; type: 'group' | 'sequence' }[] } => {
-
-  // Try all combinations of groups and sequences
-  const groupCombinations = getCombinations(possibleGroups, requiredGroups);
-  const sequenceCombinations = getCombinations(possibleSequences, requiredSequences);
-
-  for (const groups of groupCombinations) {
-    for (const sequences of sequenceCombinations) {
-      const usedCards = new Set<string>();
-      let isValidCombination = true;
-
-      // Check if cards are not reused
-      for (const group of groups) {
-        for (const card of group) {
-          if (usedCards.has(card.id)) {
-            isValidCombination = false;
-            break;
-          }
-          usedCards.add(card.id);
-        }
-        if (!isValidCombination) break;
-      }
-
-      if (isValidCombination) {
-        for (const sequence of sequences) {
-          for (const card of sequence) {
-            if (usedCards.has(card.id)) {
-              isValidCombination = false;
-              break;
-            }
-            usedCards.add(card.id);
-          }
-          if (!isValidCombination) break;
-        }
-      }
-
-      // Check if all selected cards are used
-      const allSelectedCards = allCards.every(card => usedCards.has(card.id));
-
-      if (isValidCombination && allSelectedCards) {
-        const combinations = [
-          ...groups.map(cards => ({ cards, type: 'group' as const })),
-          ...sequences.map(cards => ({ cards, type: 'sequence' as const }))
-        ];
-        // Une seule autorité pour les règles de mission (voir missionRules.ts)
-        if (satisfiesMission(combinations, requirements)) {
-          return { isValid: true, combinations };
-        }
-      }
-    }
-  }
-
-  return { isValid: false, combinations: [] };
 };
 
 // Get all combinations of a given size from an array
@@ -521,8 +344,24 @@ const findCreditedLayout = (
 
 
 /**
- * Vue « cartes réelles » des combinaisons possibles, pour les appelants qui veulent
- * simplement lister des groupes et des suites (IA, fin de manche).
+ * Une disposition en groupes seulement qui utilise toutes les cartes, ou `null`.
+ * C'est ce qu'il faut pour poser ses cartes restantes après la mission : les jokers
+ * y sont distribués une seule fois, donc les groupes renvoyés sont bien disjoints.
+ */
+export const findGroupsOnlyLayout = (cards: Card[]): UsedCombinations | null => {
+  const result = canFormValidGroupsOnly(cards);
+  return result.isValid ? result.combinations : null;
+};
+
+/**
+ * Liste les combinaisons possibles, chacune matérialisée avec les premiers jokers de
+ * la main.
+ *
+ * ⚠️ Ce sont des *alternatives*, pas une disposition : deux combinaisons de cette
+ * liste peuvent nommer le même joker et ne sont donc pas forcément compatibles entre
+ * elles. Pour poser plusieurs combinaisons à la fois, passer par une disposition
+ * (`findGroupsOnlyLayout`, `validateMissionFromSelection`), qui répartit le pool de
+ * jokers correctement.
  */
 export const findAllValidCombinations = (cards: Card[]): {
   groups: Card[][],
