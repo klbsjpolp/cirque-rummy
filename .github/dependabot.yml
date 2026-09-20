@@ -59,6 +59,13 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    ignore:
+      # v4 moved the PostCSS plugin to @tailwindcss/postcss and needs a
+      # deliberate config migration (postcss.config.js, index.css, the
+      # tailwindcss-animate plugin); don't let it auto-bump and silently
+      # break the production build again.
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
