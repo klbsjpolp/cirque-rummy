@@ -1,3 +1,14 @@
 allowBuilds:
   '@swc/core': true
   esbuild: true
+
+# vitest names its sibling packages as exact-version peers, so they only work
+# together on the very same release. Dependabot has bumped vitest alone before
+# (5.0.1 next to @vitest/coverage-v8 3.2.4), which pnpm only warned about.
+# The group is declared once here, pinned exactly: with caret ranges a fresh
+# resolve picks the newest sibling while the lockfile holds vitest back, which
+# recreates the split. CI fails on any unmet peer (see ci.yml).
+catalog:
+  vitest: 5.0.1
+  '@vitest/coverage-v8': 5.0.1
+  '@vitest/ui': 5.0.1

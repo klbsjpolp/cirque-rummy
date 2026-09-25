@@ -30,6 +30,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # A frozen install never re-checks peers, so a Dependabot PR that bumps
+      # vitest without @vitest/* installs cleanly and only fails later with a
+      # confusing vitest error. Re-resolving with strict peers fails here instead.
+      - name: Check peer dependencies
+        run: pnpm install --resolution-only --config.strict-peer-dependencies=true
+
       - name: Run lint
         run: pnpm lint
 
