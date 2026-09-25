@@ -122,7 +122,7 @@ Le premier joueur à réussir **7 missions** remporte la partie. Chaque joueur p
 ## 🛠️ Installation et développement
 
 ### Prérequis
-- Node.js (recommandé via [nvm](https://github.com/nvm-sh/nvm#installing-and-updating))
+- Node.js 22.12+, 24 ou 26+ — les versions impaires ne sont pas prises en charge par Vitest (recommandé via [nvm](https://github.com/nvm-sh/nvm#installing-and-updating))
 - pnpm 10+ (via [Corepack](https://nodejs.org/api/corepack.html) : `corepack enable`)
 
 ### Installation
