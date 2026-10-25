@@ -11,4 +11,4 @@ allowBuilds:
 catalog:
   vitest: 5.0.3
   '@vitest/coverage-v8': 5.0.3
-  '@vitest/ui': 5.0.3
+  '@vitest/ui': 5.0.5
