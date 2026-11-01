@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { AIPlayer } from '../utils/aiPlayer';
+import { chooseAIDiscard, chooseAIDraw } from '../utils/aiPlayer';
+import { gameReducer } from '../game/gameReducer';
 import { Card, GameState, Player } from '../types/game';
 import { createCard, createJokerCard } from './testUtils';
-import { isJokerCard, isNormalCard } from '../utils/cardUtils';
 
 const createPlayer = (id: string, name: string, hand: Card[] = []): Player => ({
   id,
@@ -32,9 +32,37 @@ const createGameState = (players: Player[], deck: Card[], discardPile: Card[] = 
   lastDrawnCardId: null,
 });
 
-describe('AIPlayer', () => {
+const aiMove = (state: GameState): GameState => gameReducer(state, { type: 'AI_MOVE' });
+
+describe('AI decisions', () => {
+  it('draws from the deck, not from the discard pile', () => {
+    const state = createGameState(
+      [createPlayer('p1', 'Human'), createPlayer('ai', 'AI')],
+      [createCard('K', 'diamonds')],
+      [createCard('2', 'hearts')],
+    );
+
+    expect(chooseAIDraw(state)).toBe(false);
+  });
+
+  it('picks a card from the current player\'s hand', () => {
+    const hand = [createCard('5', 'spades'), createCard('7', 'clubs')];
+    const state = createGameState([createPlayer('p1', 'Human'), createPlayer('ai', 'AI', hand)], []);
+
+    expect(chooseAIDiscard(state, () => 0)).toBe(hand[0].id);
+    expect(chooseAIDiscard(state, () => 0.99)).toBe(hand[1].id);
+  });
+
+  it('has nothing to discard from an empty hand', () => {
+    const state = createGameState([createPlayer('p1', 'Human'), createPlayer('ai', 'AI', [])], []);
+
+    expect(chooseAIDiscard(state)).toBeUndefined();
+  });
+});
+
+describe('AI turn', () => {
   beforeEach(() => {
-    // Make Math.random deterministic: always return 0 (first index)
+    // Rend Math.random déterministe : toujours le premier indice.
     vi.spyOn(Math, 'random').mockReturnValue(0);
   });
 
@@ -42,151 +70,123 @@ describe('AIPlayer', () => {
     vi.restoreAllMocks();
   });
 
-  describe('makeMove - normal turn', () => {
+  describe('normal turn', () => {
     it('draws one card from the deck and discards one card', () => {
       const human = createPlayer('p1', 'Human', [createCard('A', 'hearts')]);
       const ai = createPlayer('ai', 'AI', [createCard('5', 'spades'), createCard('7', 'clubs')]);
-      const deck = [createCard('K', 'diamonds'), createCard('Q', 'hearts')];
-      const state = createGameState([human, ai], deck);
+      const state = createGameState([human, ai], [createCard('K', 'diamonds'), createCard('Q', 'hearts')]);
 
-      const initialHandSize = ai.hand.length;
-      const initialDeckSize = state.deck.length;
-      const initialDiscardSize = state.discardPile.length;
+      const next = aiMove(state);
 
-      AIPlayer.makeMove(state);
-
-      // AI hand size should be unchanged (drew 1, discarded 1)
-      expect(ai.hand).toHaveLength(initialHandSize);
-      // Deck shrinks by 1
-      expect(state.deck).toHaveLength(initialDeckSize - 1);
-      // Discard pile grows by 1
-      expect(state.discardPile).toHaveLength(initialDiscardSize + 1);
+      expect(next.players[1].hand).toHaveLength(ai.hand.length);
+      expect(next.deck).toHaveLength(state.deck.length - 1);
+      expect(next.discardPile).toHaveLength(state.discardPile.length + 1);
     });
 
     it('records draw and discard in game history', () => {
       const human = createPlayer('p1', 'Human', [createCard('A', 'hearts')]);
       const ai = createPlayer('ai', 'AI', [createCard('5', 'spades')]);
-      const deck = [createCard('K', 'diamonds'), createCard('Q', 'hearts')];
-      const state = createGameState([human, ai], deck);
+      const state = createGameState([human, ai], [createCard('K', 'diamonds'), createCard('Q', 'hearts')]);
 
-      AIPlayer.makeMove(state);
+      const next = aiMove(state);
 
-      expect(state.gameHistory.some(h => h.includes('AI') && h.includes('pioche'))).toBe(true);
-      expect(state.gameHistory.some(h => h.includes('AI') && h.includes('défausse'))).toBe(true);
+      expect(next.gameHistory.some(h => h.includes('AI') && h.includes('pioche'))).toBe(true);
+      expect(next.gameHistory.some(h => h.includes('AI') && h.includes('défausse'))).toBe(true);
     });
 
     it('advances currentPlayerIndex to next player when round did not end', () => {
       const human = createPlayer('p1', 'Human', [createCard('A', 'hearts')]);
       const ai = createPlayer('ai', 'AI', [createCard('5', 'spades'), createCard('7', 'clubs')]);
-      const deck = [createCard('K', 'diamonds')];
-      const state = createGameState([human, ai], deck);
-      state.currentPlayerIndex = 1;
+      const state = createGameState([human, ai], [createCard('K', 'diamonds')]);
 
-      AIPlayer.makeMove(state);
+      const next = aiMove(state);
 
-      expect(state.currentPlayerIndex).toBe(0);
+      expect(next.currentPlayerIndex).toBe(0);
+      expect(next.isAITurn).toBe(false);
     });
 
     it('draws the top card of the deck (last element)', () => {
       const human = createPlayer('p1', 'Human', [createCard('A', 'hearts')]);
       const ai = createPlayer('ai', 'AI', [createCard('5', 'spades')]);
       const topCard = createCard('K', 'diamonds');
-      const deck = [createCard('2', 'clubs'), topCard];
-      const state = createGameState([human, ai], deck);
+      const state = createGameState([human, ai], [createCard('2', 'clubs'), topCard]);
 
-      AIPlayer.makeMove(state);
+      const next = aiMove(state);
 
-      // Top card should now be in AI's hand or in the discard pile
-      // (since Math.random=0 picks the first card in hand to discard, and the new card was pushed last,
-      // the original first card is discarded and the drawn card stays in the hand)
-      const drawnCardInHand = ai.hand.some(c => c.id === topCard.id);
-      const drawnCardInDiscard = state.discardPile.some(c => c.id === topCard.id);
-      expect(drawnCardInHand || drawnCardInDiscard).toBe(true);
+      const inHand = next.players[1].hand.some(c => c.id === topCard.id);
+      const inDiscard = next.discardPile.some(c => c.id === topCard.id);
+      expect(inHand || inDiscard).toBe(true);
     });
 
     it('formats discard message with card value for normal cards', () => {
-      const human = createPlayer('p1', 'Human', []);
+      const human = createPlayer('p1', 'Human', [createCard('A', 'hearts')]);
       const ai = createPlayer('ai', 'AI', [createCard('7', 'clubs')]);
-      const deck = [createCard('K', 'diamonds'), createCard('Q', 'hearts')];
-      const state = createGameState([human, ai], deck);
+      const state = createGameState([human, ai], [createCard('K', 'diamonds'), createCard('Q', 'hearts')]);
 
-      AIPlayer.makeMove(state);
+      const next = aiMove(state);
 
-      const discardMsg = state.gameHistory.find(h => h.includes('défausse'));
+      const discardMsg = next.gameHistory.find(h => h.includes('défausse'));
       expect(discardMsg).toBeDefined();
-      // With Math.random=0, the first card in hand (the 7 of clubs) is discarded
       expect(discardMsg).toContain('7');
     });
 
     it('formats discard message as "Joker" when discarding a joker', () => {
-      const human = createPlayer('p1', 'Human', []);
-      const joker = createJokerCard();
-      const ai = createPlayer('ai', 'AI', [joker]);
-      const deck = [createCard('K', 'diamonds'), createCard('Q', 'hearts')];
-      const state = createGameState([human, ai], deck);
+      const human = createPlayer('p1', 'Human', [createCard('A', 'hearts')]);
+      const ai = createPlayer('ai', 'AI', [createJokerCard()]);
+      const state = createGameState([human, ai], [createCard('K', 'diamonds'), createCard('Q', 'hearts')]);
 
-      AIPlayer.makeMove(state);
+      const next = aiMove(state);
 
-      const discardMsg = state.gameHistory.find(h => h.includes('défausse'));
-      expect(discardMsg).toContain('Joker');
+      expect(next.gameHistory.find(h => h.includes('défausse'))).toContain('Joker');
     });
   });
 
-  describe('makeMove - empty deck', () => {
-    it('does not crash when the deck is empty and still discards', () => {
+  describe('exhausted table', () => {
+    it('reforms the deck from the discard pile instead of skipping the draw', () => {
       const human = createPlayer('p1', 'Human', [createCard('A', 'hearts')]);
       const ai = createPlayer('ai', 'AI', [createCard('5', 'spades'), createCard('7', 'clubs')]);
-      const state = createGameState([human, ai], []);
+      const state = createGameState([human, ai], [], [
+        createCard('2', 'hearts'),
+        createCard('3', 'hearts'),
+        createCard('4', 'hearts'),
+      ]);
 
-      const initialHandSize = ai.hand.length;
-      const initialDiscardSize = state.discardPile.length;
+      const next = aiMove(state);
 
-      expect(() => AIPlayer.makeMove(state)).not.toThrow();
-      // No draw possible, but discard still happens
-      expect(ai.hand).toHaveLength(initialHandSize - 1);
-      expect(state.discardPile).toHaveLength(initialDiscardSize + 1);
+      // L'IA passe par les mêmes règles que le joueur : la défausse reforme la pioche.
+      expect(next.gameHistory.some(h => h.includes('remélangée'))).toBe(true);
+      expect(next.players[1].hand).toHaveLength(ai.hand.length);
     });
 
-    it('does nothing when both deck and hand are empty', () => {
+    it('redeals the round when nothing can be drawn at all', () => {
       const human = createPlayer('p1', 'Human', [createCard('A', 'hearts')]);
-      const ai = createPlayer('ai', 'AI', []);
-      const state = createGameState([human, ai], []);
+      const ai = createPlayer('ai', 'AI', [createCard('5', 'spades')]);
+      const state = createGameState([human, ai], [], []);
 
-      const startIdx = state.currentPlayerIndex;
-      expect(() => AIPlayer.makeMove(state)).not.toThrow();
-      expect(ai.hand).toHaveLength(0);
-      expect(state.discardPile).toHaveLength(0);
-      // currentPlayerIndex should not change since the discard branch never ran
-      expect(state.currentPlayerIndex).toBe(startIdx);
+      const next = aiMove(state);
+
+      expect(next.gameHistory.some(h => h.includes('Plus rien à piocher'))).toBe(true);
+      expect(next.players.map(p => p.hand.length)).toEqual([13, 13]);
     });
   });
 
-  describe('makeMove - round end', () => {
+  describe('round end', () => {
     it('triggers round end and redistributes 13 cards when AI goes out', () => {
       const human = createPlayer('p1', 'Human', [createCard('A', 'hearts')]);
-      // AI has empty hand to start; deck has 1 card so it draws then discards, ending with 0
       const ai = createPlayer('ai', 'AI', []);
-      const drawCard = createCard('5', 'spades');
-      const state = createGameState([human, ai], [drawCard]);
+      const state = createGameState([human, ai], [createCard('5', 'spades')], [createCard('2', 'hearts')]);
 
-      AIPlayer.makeMove(state);
+      const next = aiMove(state);
 
-      // After round end:
-      // - both players should have 13 cards
-      expect(human.hand).toHaveLength(13);
-      expect(ai.hand).toHaveLength(13);
-      // - combinations cleared
-      expect(human.combinations).toEqual([]);
-      expect(ai.combinations).toEqual([]);
-      // - new discard pile has 1 card
-      expect(state.discardPile).toHaveLength(1);
-      // - currentPlayerIndex reset to 0
-      expect(state.currentPlayerIndex).toBe(0);
-      // - isAITurn cleared
-      expect(state.isAITurn).toBe(false);
-      // - history mentions round end
-      expect(state.gameHistory.some(h => h.includes('termine la manche'))).toBe(true);
-      expect(state.gameHistory.some(h => h.includes('Nouvelle manche'))).toBe(true);
+      expect(next.players[0].hand).toHaveLength(13);
+      expect(next.players[1].hand).toHaveLength(13);
+      expect(next.players[0].combinations).toEqual([]);
+      expect(next.players[1].combinations).toEqual([]);
+      expect(next.discardPile).toHaveLength(1);
+      expect(next.currentPlayerIndex).toBe(0);
+      expect(next.isAITurn).toBe(false);
+      expect(next.gameHistory.some(h => h.includes('termine la manche'))).toBe(true);
+      expect(next.gameHistory.some(h => h.includes('Nouvelle manche'))).toBe(true);
     });
 
     it('does not trigger round end when AI still has cards after discard', () => {
@@ -196,79 +196,27 @@ describe('AIPlayer', () => {
         createCard('7', 'clubs'),
         createCard('9', 'diamonds'),
       ]);
-      const deck = [createCard('K', 'diamonds')];
-      const state = createGameState([human, ai], deck);
+      const state = createGameState([human, ai], [createCard('K', 'diamonds')]);
 
-      AIPlayer.makeMove(state);
+      const next = aiMove(state);
 
-      expect(ai.hand.length).toBe(3); // drew 1, discarded 1, net 0
-      expect(state.gameHistory.some(h => h.includes('Nouvelle manche'))).toBe(false);
+      expect(next.players[1].hand).toHaveLength(3);
+      expect(next.gameHistory.some(h => h.includes('Nouvelle manche'))).toBe(false);
     });
 
     it('clears existing combinations from all players on round end', () => {
       const human = createPlayer('p1', 'Human', [createCard('A', 'hearts')]);
-      human.combinations = [
-        {
-          id: 'c1',
-          type: 'group',
-          cards: [createCard('3', 'hearts'), createCard('3', 'clubs'), createCard('3', 'spades')],
-        },
-      ];
+      human.combinations = [{
+        id: 'c1',
+        type: 'group',
+        cards: [createCard('3', 'hearts'), createCard('3', 'clubs'), createCard('3', 'spades')],
+      }];
       const ai = createPlayer('ai', 'AI', []);
-      ai.combinations = [
-        {
-          id: 'c2',
-          type: 'group',
-          cards: [createCard('K', 'hearts'), createCard('K', 'clubs'), createCard('K', 'spades')],
-        },
-      ];
-      const state = createGameState([human, ai], [createCard('5', 'spades')]);
+      const state = createGameState([human, ai], [createCard('5', 'spades')], [createCard('2', 'hearts')]);
 
-      AIPlayer.makeMove(state);
+      const next = aiMove(state);
 
-      expect(human.combinations).toEqual([]);
-      expect(ai.combinations).toEqual([]);
-    });
-  });
-
-  describe('makeMove with playable combinations in hand', () => {
-    it('still draws and discards even when valid groups are present', () => {
-      // Hand contains a valid group of 3 (three different-suit 7s) and a valid sequence
-      const human = createPlayer('p1', 'Human', [createCard('A', 'hearts')]);
-      const ai = createPlayer('ai', 'AI', [
-        createCard('7', 'clubs'),
-        createCard('7', 'diamonds'),
-        createCard('7', 'spades'),
-        createCard('4', 'hearts'),
-        createCard('5', 'hearts'),
-        createCard('6', 'hearts'),
-      ]);
-      const deck = [createCard('K', 'diamonds')];
-      const state = createGameState([human, ai], deck);
-
-      const initialHandSize = ai.hand.length;
-      AIPlayer.makeMove(state);
-
-      // Current AI implementation draws and discards regardless of available combinations
-      expect(ai.hand).toHaveLength(initialHandSize); // drew 1, discarded 1
-      expect(state.deck).toHaveLength(0);
-      expect(state.discardPile).toHaveLength(1);
-    });
-  });
-
-  describe('makeMove preserves total card invariant on normal turn', () => {
-    it('total card count stays constant after a draw+discard turn', () => {
-      const human = createPlayer('p1', 'Human', [createCard('A', 'hearts'), createCard('2', 'hearts')]);
-      const ai = createPlayer('ai', 'AI', [createCard('5', 'spades'), createCard('7', 'clubs')]);
-      const deck = [createCard('K', 'diamonds'), createCard('Q', 'hearts'), createCard('J', 'clubs')];
-      const initialDiscard = [createCard('3', 'diamonds')];
-      const state = createGameState([human, ai], deck, initialDiscard);
-
-      const totalBefore = human.hand.length + ai.hand.length + state.deck.length + state.discardPile.length;
-      AIPlayer.makeMove(state);
-      const totalAfter = human.hand.length + ai.hand.length + state.deck.length + state.discardPile.length;
-
-      expect(totalAfter).toBe(totalBefore);
+      expect(next.players[0].combinations).toEqual([]);
     });
   });
 });
