@@ -25,3 +25,5 @@ dist-ssr
 
 .claude/settings.local.json
 .claude/worktrees/*
+# Artefacts de compilation TypeScript (régénérés par `tsc -b`)
+*.tsbuildinfo
