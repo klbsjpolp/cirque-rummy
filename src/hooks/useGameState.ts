@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useReducer } from 'react';
+import { useCallback, useEffect, useReducer, useRef } from 'react';
+import { toast } from 'sonner';
 import { GameState } from '../types/game';
 import {
   GameAction,
@@ -33,6 +34,17 @@ export const useGameState = () => {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
   }, [gameState]);
+
+  // Un refus se voit : le réducteur dit pourquoi, le hook le montre. Le numéro de
+  // l'avis est ce qui le distingue du précédent, pour que le même refus répété
+  // s'affiche à nouveau au lieu de passer inaperçu.
+  const lastNoticeId = useRef<number | null>(gameState.notice?.id ?? null);
+  useEffect(() => {
+    const notice = gameState.notice;
+    if (!notice || notice.id === lastNoticeId.current) return;
+    lastNoticeId.current = notice.id;
+    toast(notice.message);
+  }, [gameState.notice]);
 
   useEffect(() => {
     if (!gameState.isAITurn || gameState.isGameOver) return;

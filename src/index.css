@@ -101,3 +101,16 @@
     @apply bg-background text-foreground;
   }
 }
+/*
+ * Le focus clavier sur les cartes et les piles. Les cartes se dessinent en styles
+ * en ligne, qui ne savent pas exprimer `:focus-visible` — l'anneau vient donc d'ici.
+ */
+.cr-card:focus-visible,
+.cr-pile:focus-visible {
+  outline: 3px solid #e8c14a;
+  outline-offset: 3px;
+}
+
+.cr-pile:disabled {
+  cursor: default;
+}

@@ -30,6 +30,7 @@ const createGameState = (players: Player[], deck: Card[], discardPile: Card[] = 
   hasDrawnThisTurn: false,
   mustDiscardToEndTurn: false,
   lastDrawnCardId: null,
+  notice: null,
 });
 
 const aiMove = (state: GameState): GameState => gameReducer(state, { type: 'AI_MOVE' });

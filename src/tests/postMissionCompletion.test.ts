@@ -42,7 +42,8 @@ describe('Post-Mission Completion Mechanics', () => {
     cardsDrawnThisTurn: 0,
     hasDrawnThisTurn: false,
     mustDiscardToEndTurn: false,
-    lastDrawnCardId: null
+    lastDrawnCardId: null,
+    notice: null
   })
 
   describe('Adding Cards to Own Combinations After Mission Completion', () => {

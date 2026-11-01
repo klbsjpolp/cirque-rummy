@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card as CardType } from '../types/game';
+import { Card as CardType, CardSuit, CardValue } from '../types/game';
 import { isJokerCard } from '../utils/cardUtils';
 
 interface CardProps {
@@ -14,13 +14,90 @@ interface CardProps {
 }
 
 const SUIT_GLYPH: Record<string, string> = { hearts: '♥', diamonds: '♦', clubs: '♣', spades: '♠' };
+
+/**
+ * Le nom parlé d'une carte. Les glyphes (♥, K) ne se lisent pas : un lecteur d'écran
+ * annonçait « K noir cœur » ou rien du tout. Ces noms-là s'entendent.
+ */
+const SUIT_NAMES: Record<CardSuit, string> = {
+  hearts: 'cœur',
+  diamonds: 'carreau',
+  clubs: 'trèfle',
+  spades: 'pique',
+};
+const VALUE_NAMES: Partial<Record<CardValue, string>> = {
+  A: 'as',
+  J: 'valet',
+  Q: 'dame',
+  K: 'roi',
+};
+
+const cardName = (card: CardType): string =>
+  isJokerCard(card)
+    ? 'Joker'
+    : `${VALUE_NAMES[card.value] ?? card.value} de ${SUIT_NAMES[card.suit]}`;
+
+/** Le nom complet, état compris : c'est ce qu'un lecteur d'écran annonce. */
+const accessibleName = (card: CardType, isSelected: boolean, justDrawn: boolean): string => {
+  const states = [
+    isSelected ? 'sélectionnée' : null,
+    justDrawn ? 'piochée à l\'instant' : null,
+  ].filter(Boolean);
+  return states.length > 0 ? `${cardName(card)}, ${states.join(', ')}` : cardName(card);
+};
 const SUIT_COLOR: Record<string, string> = { hearts: '#c62b2b', diamonds: '#c62b2b', clubs: '#1a1a1a', spades: '#1a1a1a' };
+
+/** Ce qu'un `<button>` apporte de lui-même et qu'une carte ne veut pas. */
+const BUTTON_RESET: React.CSSProperties = {
+  appearance: 'none',
+  margin: 0,
+  font: 'inherit',
+  textAlign: 'left',
+  display: 'block',
+};
 
 const SIZES = {
   small:  { w: 48, h: 68,  rank: 18, suit: 18, pad: 4, center: 22 },
   medium: { w: 60, h: 86,  rank: 22, suit: 22, pad: 5, center: 30 },
   large:  { w: 74, h: 108, rank: 28, suit: 28, pad: 6, center: 38 },
 };
+
+/**
+ * L'enveloppe de la carte.
+ *
+ * Une carte sur laquelle on peut agir est un vrai `<button>` : le navigateur lui donne
+ * le focus, l'activation à Entrée et à Espace, et l'annonce de son nom — tout ce qu'un
+ * `div` cliquable ne donne pas. Une carte simplement posée n'est pas interactive :
+ * c'est une image, mais une image nommée.
+ *
+ * Ce composant vit au niveau du module, et non dans le rendu de `Card` : un composant
+ * recréé à chaque rendu remonte ses enfants, et la carte perdrait le focus clavier.
+ */
+const CardShell: React.FC<{
+  label: string;
+  isSelected: boolean;
+  onClick?: () => void;
+  className: string;
+  style: React.CSSProperties;
+  children: React.ReactNode;
+}> = ({ label, isSelected, onClick, className, style, children }) => onClick
+  ? (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      aria-pressed={isSelected}
+      className={`cr-card ${className}`.trim()}
+      style={{ ...style, ...BUTTON_RESET }}
+    >
+      {children}
+    </button>
+  )
+  : (
+    <div role="img" aria-label={label} className={className} style={style}>
+      {children}
+    </div>
+  );
 
 const Card: React.FC<CardProps> = ({
   card,
@@ -34,6 +111,9 @@ const Card: React.FC<CardProps> = ({
 }) => {
   const s = SIZES[size];
   const isVintage = style === 'vintage';
+
+  const label = accessibleName(card, isSelected, justDrawn);
+  const shell = { label, isSelected, onClick, className };
 
   const baseShadow = isSelected
     ? '0 10px 20px rgba(0,0,0,0.22), 0 0 0 2px #e8c14a'
@@ -71,9 +151,8 @@ const Card: React.FC<CardProps> = ({
       : '#ffffff';
     const jokerInk = '#4a2a7a';
     return (
-      <div
-        onClick={onClick}
-        className={className}
+      <CardShell
+        {...shell}
         style={{
           ...baseStyle,
           background: bg,
@@ -95,7 +174,7 @@ const Card: React.FC<CardProps> = ({
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
           <div style={{ fontSize: s.center + 6, lineHeight: 1, color: jokerInk }}>★</div>
         </div>
-      </div>
+      </CardShell>
     );
   }
 
@@ -104,9 +183,8 @@ const Card: React.FC<CardProps> = ({
 
   if (!isVintage) {
     return (
-      <div
-        onClick={onClick}
-        className={className}
+      <CardShell
+        {...shell}
         style={{
           ...baseStyle,
           background: '#ffffff',
@@ -120,14 +198,13 @@ const Card: React.FC<CardProps> = ({
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
           <div style={{ fontSize: Math.round(s.center * 1.35), lineHeight: 1 }}>{glyph}</div>
         </div>
-      </div>
+      </CardShell>
     );
   }
 
   return (
-    <div
-      onClick={onClick}
-      className={className}
+    <CardShell
+      {...shell}
       style={{
         ...baseStyle,
         background: 'linear-gradient(160deg, #fdf6e3 0%, #f4ead0 100%)',
@@ -152,7 +229,7 @@ const Card: React.FC<CardProps> = ({
           textShadow: '0 1px 0 rgba(120,80,20,0.25)',
         }}>★</div>
       </div>
-    </div>
+    </CardShell>
   );
 };
 

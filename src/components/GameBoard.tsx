@@ -273,11 +273,20 @@ const DeckArea: React.FC<{
 }> = ({ deckCount, topDiscard, canDraw, deckDrawable, onDrawDeck, onDrawDiscard }) => (
   <div style={{ display: 'flex', gap: 14, alignItems: 'center', justifyContent: 'center', padding: '8px 0' }}>
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-      <div data-testid="deck-pile" onClick={canDraw && deckDrawable ? onDrawDeck : undefined} style={{
-        position: 'relative',
-        cursor: canDraw && deckDrawable ? 'pointer' : 'default',
-        filter: canDraw ? 'none' : 'grayscale(0.4) brightness(0.7)',
-      }}>
+      <button
+        type="button"
+        data-testid="deck-pile"
+        onClick={onDrawDeck}
+        disabled={!canDraw || !deckDrawable}
+        aria-label={`Piocher au paquet, ${deckCount} carte${deckCount === 1 ? '' : 's'}`}
+        className="cr-pile"
+        style={{
+          position: 'relative',
+          cursor: canDraw && deckDrawable ? 'pointer' : 'default',
+          filter: canDraw ? 'none' : 'grayscale(0.4) brightness(0.7)',
+          background: 'none', border: 'none', padding: 0, margin: 0, font: 'inherit',
+        }}
+      >
         <div style={{ position: 'absolute', top: 3, left: 3 }}><CardBack /></div>
         <div style={{ position: 'absolute', top: 1.5, left: 1.5 }}><CardBack /></div>
         <div style={{ position: 'relative' }}><CardBack /></div>
@@ -286,23 +295,32 @@ const DeckArea: React.FC<{
           fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 999,
           border: `1px solid ${C.gold}`,
         }}>{deckCount}</div>
-      </div>
+      </button>
       <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.55)' }}>Pioche</div>
     </div>
 
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-      <div onClick={canDraw && topDiscard ? onDrawDiscard : undefined} style={{
-        width: 60, height: 86, borderRadius: 8,
-        background: topDiscard ? 'transparent' : 'rgba(255,255,255,0.04)',
-        border: topDiscard ? 'none' : '1.5px dashed rgba(255,255,255,0.18)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        cursor: canDraw && topDiscard ? 'pointer' : 'default',
-      }}>
+      <button
+        type="button"
+        data-testid="discard-pile"
+        onClick={onDrawDiscard}
+        disabled={!canDraw || !topDiscard}
+        aria-label={topDiscard ? 'Piocher la carte visible de la défausse' : 'Défausse vide'}
+        className="cr-pile"
+        style={{
+          width: 60, height: 86, borderRadius: 8,
+          background: topDiscard ? 'transparent' : 'rgba(255,255,255,0.04)',
+          border: topDiscard ? 'none' : '1.5px dashed rgba(255,255,255,0.18)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: canDraw && topDiscard ? 'pointer' : 'default',
+          padding: 0, margin: 0, font: 'inherit',
+        }}
+      >
         {topDiscard
           ? <Card card={topDiscard} />
           : <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: 1 }}>vide</div>
         }
-      </div>
+      </button>
       <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.55)' }}>Défausse</div>
     </div>
   </div>

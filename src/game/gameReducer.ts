@@ -60,6 +60,16 @@ const getRandomMission = (completedMissions: number[]): number =>
 const withHistory = (state: GameState, ...lines: string[]): GameState =>
   lines.length === 0 ? state : { ...state, gameHistory: [...state.gameHistory, ...lines] };
 
+/**
+ * Refuser une action en disant pourquoi. L'état ne change pas autrement : seul l'avis
+ * est posé, et son numéro avance pour que le même refus répété se voie quand même.
+ */
+const refuseWith = (state: GameState, message: string, ...history: string[]): GameState =>
+  withHistory(
+    { ...state, notice: { id: (state.notice?.id ?? 0) + 1, message } },
+    ...history
+  );
+
 const withPlayerAt = (
   state: GameState,
   index: number,
@@ -125,13 +135,16 @@ export const createInitialState = (gameMode: 'pvp' | 'ai' = 'pvp'): GameState =>
     cardsDrawnThisTurn: 0,
     hasDrawnThisTurn: false,
     mustDiscardToEndTurn: false,
-    lastDrawnCardId: null
+    lastDrawnCardId: null,
+    notice: null
   };
 };
 
 /** Une partie sauvegardée avant l'ajout d'un champ le retrouve ici. */
 export const migrateSavedState = (saved: GameState): GameState => ({
   ...saved,
+  // Un refus d'avant la fermeture de l'onglet n'a plus rien à dire au rechargement.
+  notice: null,
   cardsDrawnThisTurn: saved.cardsDrawnThisTurn ?? 0,
   hasDrawnThisTurn: saved.hasDrawnThisTurn ?? false,
   mustDiscardToEndTurn: saved.mustDiscardToEndTurn ?? false,
@@ -223,7 +236,9 @@ const creditMissionIfCompleted = (state: GameState, playerIndex: number): GameSt
 // ── Actions ────────────────────────────────────────────────
 
 const drawCard = (state: GameState, fromDiscard: boolean): GameState => {
-  if (state.cardsDrawnThisTurn >= 1) return state;
+  if (state.cardsDrawnThisTurn >= 1) {
+    return refuseWith(state, 'Vous avez déjà pioché ce tour-ci : posez ou défaussez.');
+  }
 
   const player = state.players[state.currentPlayerIndex];
 
@@ -277,7 +292,9 @@ const takeCard = (state: GameState, drawn: Card, line: string): GameState =>
   );
 
 const discardCard = (state: GameState, cardId: string): GameState => {
-  if (!state.hasDrawnThisTurn) return state;
+  if (!state.hasDrawnThisTurn) {
+    return refuseWith(state, 'Piochez une carte avant de défausser.');
+  }
 
   const player = state.players[state.currentPlayerIndex];
   const card = player.hand.find(c => c.id === cardId);
@@ -316,11 +333,18 @@ const layCombination = (
   const player = state.players[index];
 
   // Après la mission de la manche, plus aucune nouvelle suite.
-  if (player.missionCompletedThisRound && type === 'sequence') return state;
+  if (player.missionCompletedThisRound && type === 'sequence') {
+    return refuseWith(state, 'Après votre mission, vous ne pouvez plus poser de nouvelle suite.');
+  }
 
   const cards = cardsFromHand(player, cardIds);
   if (!cards) return state;
-  if (!(type === 'group' ? isValidGroup(cards) : isValidSequence(cards))) return state;
+  if (!(type === 'group' ? isValidGroup(cards) : isValidSequence(cards))) {
+    return refuseWith(
+      state,
+      `Ces cartes ne forment pas ${type === 'group' ? 'un groupe' : 'une suite'} valide.`
+    );
+  }
 
   const laid = withHistory(
     withPlayerAt(state, index, current => ({
@@ -334,7 +358,9 @@ const layCombination = (
 };
 
 const presentMission = (state: GameState, cardIds: string[]): GameState => {
-  if (!state.hasDrawnThisTurn) return state;
+  if (!state.hasDrawnThisTurn) {
+    return refuseWith(state, 'Piochez une carte avant de présenter votre mission.');
+  }
 
   const index = state.currentPlayerIndex;
   const player = state.players[index];
@@ -361,7 +387,9 @@ const presentMission = (state: GameState, cardIds: string[]): GameState => {
       break;
     }
   }
-  if (!validation) return state;
+  if (!validation) {
+    return refuseWith(state, `Cette sélection n'accomplit pas la mission « ${mission.title} ».`);
+  }
 
   const groupCount = validation.usedCombinations.filter(c => c.type === 'group').length;
   const sequenceCount = validation.usedCombinations.filter(c => c.type === 'sequence').length;
@@ -388,12 +416,16 @@ const presentMission = (state: GameState, cardIds: string[]): GameState => {
 };
 
 const layEndOfRound = (state: GameState, cardIds: string[]): GameState => {
-  if (!state.hasDrawnThisTurn) return state;
+  if (!state.hasDrawnThisTurn) {
+    return refuseWith(state, 'Piochez une carte avant de poser.');
+  }
 
   const index = state.currentPlayerIndex;
   const player = state.players[index];
   // La pose de fin de manche n'est ouverte qu'après la mission de *cette* manche.
-  if (!player.missionCompletedThisRound) return state;
+  if (!player.missionCompletedThisRound) {
+    return refuseWith(state, 'Accomplissez d\'abord votre mission de la manche pour poser d\'autres groupes.');
+  }
 
   const cards = cardsFromHand(player, cardIds);
   if (!cards) return state;
@@ -401,7 +433,9 @@ const layEndOfRound = (state: GameState, cardIds: string[]): GameState => {
   // Seuls de nouveaux groupes sont permis : il faut une disposition en groupes qui
   // utilise toutes les cartes sélectionnées.
   const layout = findGroupsOnlyLayout(cards);
-  if (!layout) return state;
+  if (!layout) {
+    return refuseWith(state, 'Ces cartes ne forment pas des groupes valides.');
+  }
 
   const laid = withHistory(
     withPlayerAt(state, index, current => ({
@@ -420,7 +454,7 @@ const addToCombination = (
   combinationId: string,
   targetPlayerId?: string
 ): GameState => {
-  const refuse = (reason: string) => withHistory(state, `❌ ${reason}`);
+  const refuse = (reason: string) => refuseWith(state, reason, `❌ ${reason}`);
 
   const player = state.players[state.currentPlayerIndex];
   if (!player.missionCompletedThisRound) {
@@ -533,7 +567,21 @@ const playAITurn = (state: GameState): GameState => {
   return done(discardId === undefined ? next : discardCard(next, discardId));
 };
 
+/**
+ * Le réducteur : il applique l'action, puis tient l'avis à jour.
+ *
+ * Une action qui aboutit efface l'avis du refus précédent — sinon le message resterait
+ * affiché alors que le joueur a corrigé son geste. Une action refusée pose le sien.
+ */
 export const gameReducer = (state: GameState, action: GameAction): GameState => {
+  const next = applyAction(state, action);
+
+  if (next === state) return next;                 // refusé sans rien changer
+  if (next.notice !== state.notice) return next;   // l'action a posé son propre avis
+  return state.notice === null ? next : { ...next, notice: null };
+};
+
+const applyAction = (state: GameState, action: GameAction): GameState => {
   switch (action.type) {
     case 'DRAW_CARD':
       return drawCard(state, action.fromDiscard ?? false);
