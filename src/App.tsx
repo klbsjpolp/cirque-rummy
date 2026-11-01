@@ -1,19 +1,15 @@
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Toaster } from "@/components/ui/sonner";
 import Index from "./pages/Index";
 
-const queryClient = new QueryClient();
-
+/**
+ * L'application, qui tient en une page : le plateau, et les notifications qui disent
+ * au joueur pourquoi une action a été refusée.
+ */
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <Index />
-    </TooltipProvider>
-  </QueryClientProvider>
+  <>
+    <Toaster />
+    <Index />
+  </>
 );
 
 export default App;

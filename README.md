@@ -154,27 +154,38 @@ pnpm preview         # Aperçu du build
 ### Technologies utilisées
 - **React** avec TypeScript
 - **Vite** pour le build et le développement
-- **Tailwind CSS** pour le styling
-- **shadcn/ui** pour les composants UI
-- **React Router** pour la navigation
+- **Tailwind CSS** pour les jetons de couleur et les notifications ; le plateau et les
+  cartes sont dessinés en styles en ligne
+- **sonner** pour les notifications
 - **localStorage** pour la persistance des parties
+
+Il n'y a pas de routeur : le jeu tient en une seule page. Les composants shadcn/ui
+livrés avec le gabarit de départ n'étaient pas utilisés et ont été retirés ; ils se
+réinstallent à la demande avec `npx shadcn@latest add <composant>`.
 
 ### Structure du projet
 ```
 src/
 ├── components/          # Composants React
 │   ├── GameBoard.tsx   # Plateau de jeu principal
-│   ├── Card.tsx        # Composant carte
-│   └── MissionCard.tsx # Affichage des missions
+│   ├── Card.tsx        # Composant carte (bouton accessible)
+│   ├── MissionTarget.tsx # Forme à réussir pour la mission en cours
+│   └── ui/sonner.tsx   # Notifications
+├── game/
+│   └── gameReducer.ts  # Toutes les règles, en fonction pure
 ├── hooks/
-│   └── useGameState.ts # Gestion de l'état du jeu
+│   └── useGameState.ts # État React, persistance, minuteur de l'IA
 ├── types/
 │   └── game.ts         # Types TypeScript
 ├── utils/
-│   ├── cardUtils.ts    # Utilitaires pour les cartes
-│   └── aiPlayer.ts     # Intelligence artificielle
-└── data/
-    └── missions.ts     # Définition des missions
+│   ├── cards.ts        # Primitives de cartes
+│   ├── cardUtils.ts    # Combinaisons et recherche de dispositions
+│   ├── missionRules.ts # Le moteur de règles des missions
+│   ├── gameLogic.ts    # Règles de table (pioche, extensions)
+│   └── aiPlayer.ts     # Décisions de l'IA
+├── data/
+│   └── missions.ts     # Définition des missions
+└── tests/              # La suite vitest
 ```
 
 ### Fonctionnalités implémentées

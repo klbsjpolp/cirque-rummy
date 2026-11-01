@@ -1,14 +1,17 @@
-import { useTheme } from "next-themes"
 import { Toaster as Sonner, toast } from "sonner"
 
 type ToasterProps = React.ComponentProps<typeof Sonner>
 
+/**
+ * Les notifications du jeu : c'est par là que passent les refus.
+ *
+ * Le thème reste « system », ce que renvoyait `next-themes` faute de fournisseur de
+ * thème dans l'application — la dépendance ne servait donc qu'à produire cette valeur.
+ */
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme()
-
   return (
     <Sonner
-      theme={theme as ToasterProps["theme"]}
+      theme="system"
       className="toaster group"
       toastOptions={{
         classNames: {
