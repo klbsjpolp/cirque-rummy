@@ -324,7 +324,7 @@ const layCombination = (
     `${player.name} pose une ${type === 'group' ? 'groupe' : 'suite'} de ${cards.length} cartes`
   );
 
-  return creditMissionIfCompleted(laid, index);
+  return endRoundIfSomeoneWentOut(creditMissionIfCompleted(laid, index));
 };
 
 const presentMission = (state: GameState, cardIds: string[]): GameState => {
@@ -378,7 +378,7 @@ const presentMission = (state: GameState, cardIds: string[]): GameState => {
 
   // La validation ci-dessus a vérifié la mission entière sur cette sélection : c'est
   // donc elle qui crédite la mission.
-  return creditMission(laid, index, mission);
+  return endRoundIfSomeoneWentOut(creditMission(laid, index, mission));
 };
 
 const layEndOfRound = (state: GameState, cardIds: string[]): GameState => {
@@ -462,7 +462,9 @@ const addToCombination = (
     ? ' à ses propres combinaisons'
     : ` aux combinaisons de ${target.name}`;
 
-  return withHistory({ ...state, players }, `${player.name} ajoute ${cardsDesc}${targetDesc}`);
+  return endRoundIfSomeoneWentOut(
+    withHistory({ ...state, players }, `${player.name} ajoute ${cardsDesc}${targetDesc}`)
+  );
 };
 
 const reorderCards = (state: GameState, fromIndex: number, toIndex: number): GameState => {
