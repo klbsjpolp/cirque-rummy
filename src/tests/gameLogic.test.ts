@@ -238,8 +238,32 @@ describe('isMissionCompleted', () => {
   describe('Mission 12 — free choice', () => {
     const mission = findMission(12);
 
-    it('completes if any prior mission was already done', () => {
-      expect(isMissionCompleted(mkPlayer([], [3]), mission)).toBe(true);
+    // Mission 3 : deux suites de 4.
+    const twoRunsOfFour = [
+      mkCombination('sequence', [
+        createCard('3', 'hearts'),
+        createCard('4', 'hearts'),
+        createCard('5', 'hearts'),
+        createCard('6', 'hearts'),
+      ]),
+      mkCombination('sequence', [
+        createCard('9', 'spades'),
+        createCard('10', 'spades'),
+        createCard('J', 'spades'),
+        createCard('Q', 'spades'),
+      ]),
+    ];
+
+    it('completes by replaying a mission already done', () => {
+      expect(isMissionCompleted(mkPlayer(twoRunsOfFour, [3]), mission)).toBe(true);
+    });
+    it('does not complete on the strength of a past mission alone', () => {
+      // La mission libre se rejoue : avoir réussi la mission 3 ne suffit pas, il
+      // faut la refaire.
+      expect(isMissionCompleted(mkPlayer([], [3]), mission)).toBe(false);
+    });
+    it('does not complete when the table matches no mission already done', () => {
+      expect(isMissionCompleted(mkPlayer(twoRunsOfFour, [9]), mission)).toBe(false);
     });
     it('does not complete if no missions have been done', () => {
       expect(isMissionCompleted(mkPlayer([], []), mission)).toBe(false);
