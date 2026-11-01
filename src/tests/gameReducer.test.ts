@@ -219,3 +219,105 @@ describe('état initial et reprise de partie', () => {
     expect(migrated).not.toBe(saved);
   });
 });
+
+/**
+ * « Une manche se termine lorsqu'un joueur n'a plus de cartes en main » (README).
+ *
+ * La défausse n'est donc pas le seul chemin : présenter sa mission, poser un groupe
+ * ou étendre une combinaison peut aussi vider la main. Sans fin de manche, le joueur
+ * se retrouvait sans carte à défausser et son tour ne pouvait plus se terminer.
+ */
+describe('vider sa main termine la manche, quelle que soit l\'action', () => {
+  const drawn = { cardsDrawnThisTurn: 1, hasDrawnThisTurn: true, mustDiscardToEndTurn: true };
+  const newRoundDealt = (after: GameState) => {
+    expect(after.players.map(p => p.hand.length)).toEqual([13, 13]);
+    expect(after.players.flatMap(p => p.combinations)).toEqual([]);
+    expect(after.players.map(p => p.missionCompletedThisRound)).toEqual([false, false]);
+    expect(after.gameHistory.some(line => line.includes('termine la manche'))).toBe(true);
+  };
+
+  it('présenter sa mission avec ses dernières cartes', () => {
+    const before = state({
+      ...drawn,
+      players: [
+        player('player1', 'Joueur 1', { hand: [...MISSION_1_CARDS], currentMission: 1 }),
+        player('player2', 'Joueur 2', { currentMission: 4 }),
+      ],
+    });
+    deepFreeze(before);
+
+    const after = gameReducer(before, { type: 'PRESENT_MISSION', cardIds: ids(MISSION_1_CARDS) });
+
+    // La mission reste créditée : la manche se termine par-dessus, elle n'annule rien.
+    expect(after.players[0].completedMissions).toContain(1);
+    newRoundDealt(after);
+  });
+
+  it('poser un groupe avec ses dernières cartes', () => {
+    const kings = [C('Ks'), C('Kc'), C('Kh')];
+    const before = state({
+      ...drawn,
+      players: [
+        player('player1', 'Joueur 1', { hand: kings }),
+        player('player2', 'Joueur 2'),
+      ],
+    });
+    deepFreeze(before);
+
+    const after = gameReducer(before, {
+      type: 'LAY_COMBINATION',
+      cardIds: ids(kings),
+      combinationType: 'group',
+    });
+
+    newRoundDealt(after);
+  });
+
+  it('étendre une combinaison avec sa dernière carte', () => {
+    const before = state({
+      ...drawn,
+      players: [
+        player('player1', 'Joueur 1', {
+          hand: [C('3d')],
+          missionCompletedThisRound: true,
+          combinations: [POSED_THREES],
+        }),
+        player('player2', 'Joueur 2'),
+      ],
+    });
+    deepFreeze(before);
+
+    const after = gameReducer(before, {
+      type: 'ADD_TO_COMBINATION',
+      cardIds: [C('3d').id],
+      combinationId: POSED_THREES.id,
+    });
+
+    newRoundDealt(after);
+  });
+
+  it('ne termine pas la manche tant qu\'il reste une carte', () => {
+    const before = state({
+      ...drawn,
+      players: [
+        player('player1', 'Joueur 1', {
+          hand: [C('3d'), C('8s')],
+          missionCompletedThisRound: true,
+          combinations: [POSED_THREES],
+        }),
+        player('player2', 'Joueur 2'),
+      ],
+    });
+    deepFreeze(before);
+
+    const after = gameReducer(before, {
+      type: 'ADD_TO_COMBINATION',
+      cardIds: [C('3d').id],
+      combinationId: POSED_THREES.id,
+    });
+
+    expect(after.players[0].hand.map(c => c.id)).toEqual([C('8s').id]);
+    expect(after.players[0].combinations[0].cards).toHaveLength(4);
+    expect(after.gameHistory.some(line => line.includes('termine la manche'))).toBe(false);
+  });
+});
