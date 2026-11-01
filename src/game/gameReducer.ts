@@ -16,7 +16,13 @@ import {
   replenishDeck
 } from '../utils/gameLogic';
 import { isFreeChoice, replayableMissions } from '../utils/missionRules';
-import { chooseAIDiscard, chooseAIDraw } from '../utils/aiPlayer';
+import {
+  chooseAIDiscard,
+  chooseAIDraw,
+  chooseAIExtension,
+  chooseAIGroupsToLay,
+  chooseAIMissionCards
+} from '../utils/aiPlayer';
 
 /**
  * L'état de la partie, comme fonction pure de l'état précédent et d'une action.
@@ -481,14 +487,50 @@ const reorderCards = (state: GameState, fromIndex: number, toIndex: number): Gam
 
 /**
  * L'IA décide, le réducteur applique : elle passe par les mêmes actions que le joueur
- * humain, donc par les mêmes règles de fin de manche.
+ * humain, donc par les mêmes règles (mission créditée, fin de manche, pioche
+ * remélangée).
+ *
+ * Son tour suit celui d'un joueur : piocher, présenter sa mission, puis — une fois la
+ * mission accomplie — étendre et poser pour vider sa main, et enfin défausser. Après
+ * chaque étape on vérifie qu'elle est toujours en train de jouer : accomplir sa
+ * mission peut vider sa main, ce qui termine la manche (ou la partie) sur-le-champ.
  */
 const playAITurn = (state: GameState): GameState => {
-  const afterDraw = drawCard(state, chooseAIDraw(state));
-  const discardId = chooseAIDiscard(afterDraw);
-  const afterDiscard = discardId === undefined ? afterDraw : discardCard(afterDraw, discardId);
+  const aiIndex = state.currentPlayerIndex;
+  const stillPlaying = (current: GameState): boolean =>
+    !current.isGameOver &&
+    current.currentPlayerIndex === aiIndex &&
+    current.hasDrawnThisTurn &&
+    current.players[aiIndex].hand.length > 0;
 
-  return { ...afterDiscard, isAITurn: false };
+  const done = (current: GameState): GameState => ({ ...current, isAITurn: false });
+
+  let next = drawCard(state, chooseAIDraw(state));
+  if (!stillPlaying(next)) return done(next);
+
+  const missionCards = chooseAIMissionCards(next);
+  if (missionCards) {
+    next = presentMission(next, missionCards);
+    if (!stillPlaying(next)) return done(next);
+  }
+
+  // Une extension à la fois, recalculée sur l'état à jour : la main et les
+  // combinaisons changent à chaque ajout. La main borne le nombre de tours.
+  for (let step = 0; step < next.players[aiIndex].hand.length; step++) {
+    const extension = chooseAIExtension(next);
+    if (!extension) break;
+    next = addToCombination(next, extension.cardIds, extension.combinationId, extension.targetPlayerId);
+    if (!stillPlaying(next)) return done(next);
+  }
+
+  const groupCards = chooseAIGroupsToLay(next);
+  if (groupCards.length > 0) {
+    next = layEndOfRound(next, groupCards);
+    if (!stillPlaying(next)) return done(next);
+  }
+
+  const discardId = chooseAIDiscard(next);
+  return done(discardId === undefined ? next : discardCard(next, discardId));
 };
 
 export const gameReducer = (state: GameState, action: GameAction): GameState => {

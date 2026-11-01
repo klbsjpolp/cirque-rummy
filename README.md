@@ -203,6 +203,11 @@ src/
 - La mission de l'IA n'est pas visible
 - L'IA n'a pas accès à la mission du joueur
 - Délai de 1.5s pour simuler la réflexion
+- Elle joue sa mission : elle garde les cartes qui y mènent, pioche à la défausse
+  quand la carte visible l'y aide, présente sa mission dès qu'elle le peut, puis
+  étend et pose des groupes pour terminer la manche
+- Elle passe par les mêmes actions et les mêmes règles que le joueur humain : elle ne
+  peut rien poser que le jeu refuserait à un joueur
 
 ## 🔧 Développement
 
