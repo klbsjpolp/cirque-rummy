@@ -671,3 +671,171 @@ function* missionLayouts(
     }
   }
 }
+/**
+ * Combien de dispositions l'IA examine avant d'abandonner la mission pour ce tour.
+ * Les plus grandes combinaisons viennent d'abord, donc les meilleures propositions
+ * sont vues tôt ; la borne évite qu'une main riche en jokers fasse exploser la
+ * recherche et bloque l'interface.
+ */
+const MAX_SELECTION_PROPOSALS = 20000;
+
+/**
+ * Les sélections d'une main qui peuvent accomplir une mission comptée en groupes et
+ * en suites.
+ *
+ * C'est l'inverse de `missionLayouts` : là, toute la sélection devait être posée ;
+ * ici, on part d'une main entière et on n'en retient que les combinaisons exigées.
+ * Le reste de la main reste en main.
+ */
+function* countedSelections(
+  hand: Card[],
+  requiredGroups: number,
+  requiredSequences: number,
+  minSequenceLength: number
+): Generator<UsedCombinations> {
+  const jokerPool = hand.filter(isJokerCard);
+  const candidates = buildCandidates(hand);
+  const groups = byDescendingSize(candidates.filter(c => c.type === 'group'));
+  const sequences = byDescendingSize(candidates.filter(
+    c => c.type === 'sequence' && candidateSize(c) >= minSequenceLength
+  ));
+
+  for (const chosenGroups of chooseDisjoint(groups, requiredGroups, new Set(), jokerPool.length)) {
+    const usedByGroups = new Set(chosenGroups.flatMap(combo => combo.normals.map(card => card.id)));
+    const jokersLeft = jokerPool.length - chosenGroups.reduce((n, combo) => n + combo.jokers, 0);
+
+    for (const chosenSequences of chooseDisjoint(sequences, requiredSequences, usedByGroups, jokersLeft)) {
+      yield materialize([...chosenGroups, ...chosenSequences], jokerPool);
+    }
+  }
+}
+
+/** Une carte par valeur demandée, complétée par des jokers : exactement `size` cartes. */
+const valueSetSelection = (
+  hand: Card[],
+  wanted: CardValue[],
+  size: number,
+  accepts: (card: NormalCard) => boolean = () => true
+): Card[] | null => {
+  const jokers = hand.filter(isJokerCard);
+  const chosen: Card[] = [];
+
+  for (const value of wanted) {
+    const card = hand.find(c => isNormalCard(c) && c.value === value && accepts(c) && !chosen.includes(c));
+    if (card) chosen.push(card);
+  }
+
+  const missing = size - chosen.length;
+  if (missing < 0 || missing > jokers.length) return null;
+  return [...chosen, ...jokers.slice(0, missing)];
+};
+
+/**
+ * Les sélections des missions « ensemble de cartes », qui ne se comptent pas en
+ * groupes ni en suites : elles se posent d'un bloc, d'une taille imposée.
+ */
+function* fixedSetSelections(
+  hand: Card[],
+  requirements: MissionRequirements
+): Generator<UsedCombinations> {
+  const jokers = hand.filter(isJokerCard);
+
+  switch (requirements.specificRequirements) {
+    case '7_same_suit':
+      for (const suit of CARD_SUITS) {
+        const ofSuit = hand.filter(c => isNormalCard(c) && c.suit === suit);
+        const missing = 7 - Math.min(7, ofSuit.length);
+        if (missing <= jokers.length) {
+          yield [{ cards: [...ofSuit.slice(0, 7), ...jokers.slice(0, missing)], type: 'group' }];
+        }
+      }
+      return;
+
+    case 'sequence_A_to_9': {
+      const selection = valueSetSelection(hand, ['A', '2', '3', '4', '5', '6', '7', '8', '9'], 9);
+      if (selection) yield [{ cards: selection, type: 'sequence' }];
+      return;
+    }
+
+    case 'red_even_sequence_6': {
+      const isRed = (card: NormalCard) => card.suit === 'hearts' || card.suit === 'diamonds';
+      const selection = valueSetSelection(hand, ['2', '4', '6', '8', '10', 'Q'], 6, isRed);
+      if (selection) yield [{ cards: selection, type: 'sequence' }];
+      return;
+    }
+
+    case 'seven_odd_cards': {
+      // La pose doit aussi se répartir en combinaisons valides : on essaie donc des
+      // combinaisons disjointes de la main, des plus grandes aux plus petites.
+      const candidates = byDescendingSize(buildCandidates(hand));
+      for (let count = 2; count <= 4; count++) {
+        for (const chosen of chooseDisjoint(candidates, count, new Set(), jokers.length)) {
+          yield materialize(chosen, jokers);
+        }
+      }
+      return;
+    }
+
+    default:
+      return;
+  }
+}
+
+/**
+ * Une sélection de la main qui accomplit la mission, ou `null`.
+ *
+ * C'est la décision que l'IA n'avait pas : elle cherche ici ce qu'un joueur
+ * chercherait à l'écran. Chaque sélection proposée est validée par
+ * `validateMissionFromSelection` — celle de la pose — donc l'IA ne peut jamais
+ * proposer une pose que le jeu refuserait, ni une pose jamais créditée.
+ *
+ * La mission libre n'a pas d'exigence propre : c'est à l'appelant d'essayer les
+ * missions déjà réussies une par une.
+ */
+export const findMissionSelection = (
+  hand: Card[],
+  requirements: MissionRequirements
+): Card[] | null => {
+  if (hand.length === 0) return null;
+
+  const { groups = 0, sequences = 0, minSequenceLength = 3 } = requirements;
+  const proposals = groups > 0 || sequences > 0
+    ? countedSelections(hand, groups, sequences, minSequenceLength)
+    : fixedSetSelections(hand, requirements);
+
+  let examined = 0;
+  for (const layout of proposals) {
+    // Le moteur de règles d'abord, qui ne coûte rien : la validation de pose refait
+    // une recherche de disposition, et la payer pour chaque proposition rendait un
+    // tour d'IA interminable sur une main qui n'accomplit pas encore sa mission.
+    if (++examined > MAX_SELECTION_PROPOSALS) return null;
+    if (!satisfiesMission(layout, requirements)) continue;
+
+    const selection = layout.flatMap(combo => combo.cards);
+    if (validateMissionFromSelection(selection, requirements).isValid) return selection;
+  }
+  return null;
+};
+
+/**
+ * Les groupes valides et disjoints qu'une main peut poser, les plus grands d'abord.
+ * Après sa mission, un joueur s'en sert pour se défaire d'un maximum de cartes ; les
+ * jokers n'y sont distribués qu'une fois, donc les groupes renvoyés sont compatibles.
+ */
+export const findLayableGroups = (cards: Card[]): UsedCombinations => {
+  const jokerPool = cards.filter(isJokerCard);
+  const used = new Set<string>();
+  const chosen: Candidate[] = [];
+  let jokersLeft = jokerPool.length;
+
+  for (const candidate of byDescendingSize(buildCandidates(cards).filter(c => c.type === 'group'))) {
+    if (candidate.jokers > jokersLeft) continue;
+    if (candidate.normals.some(card => used.has(card.id))) continue;
+
+    candidate.normals.forEach(card => used.add(card.id));
+    jokersLeft -= candidate.jokers;
+    chosen.push(candidate);
+  }
+
+  return materialize(chosen, jokerPool);
+};

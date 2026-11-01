@@ -35,7 +35,7 @@ const createGameState = (players: Player[], deck: Card[], discardPile: Card[] = 
 const aiMove = (state: GameState): GameState => gameReducer(state, { type: 'AI_MOVE' });
 
 describe('AI decisions', () => {
-  it('draws from the deck, not from the discard pile', () => {
+  it('draws from the deck when the discard pile card is of no use', () => {
     const state = createGameState(
       [createPlayer('p1', 'Human'), createPlayer('ai', 'AI')],
       [createCard('K', 'diamonds')],
@@ -132,8 +132,10 @@ describe('AI turn', () => {
 
     it('formats discard message as "Joker" when discarding a joker', () => {
       const human = createPlayer('p1', 'Human', [createCard('A', 'hearts')]);
+      // L'IA ne se sépare d'un joker qu'à défaut de carte normale : il faut donc
+      // qu'elle n'ait que des jokers en main après avoir pioché.
       const ai = createPlayer('ai', 'AI', [createJokerCard()]);
-      const state = createGameState([human, ai], [createCard('K', 'diamonds'), createCard('Q', 'hearts')]);
+      const state = createGameState([human, ai], [createCard('K', 'diamonds'), createJokerCard()]);
 
       const next = aiMove(state);
 
