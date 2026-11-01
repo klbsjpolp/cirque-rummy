@@ -3,6 +3,7 @@ import { useGameState } from '../hooks/useGameState';
 import { MISSIONS } from '../data/missions';
 import { Card as CardType, Player } from '../types/game';
 import { isJokerCard } from '../utils/cardUtils';
+import { isFreeChoice, replayableMissions } from '../utils/missionRules';
 import Card, { CardBack } from './Card';
 import MissionTarget from './MissionTarget';
 
@@ -211,6 +212,9 @@ const PlayerStatus: React.FC<{
 const MissionPanel: React.FC<{ player: Player }> = ({ player }) => {
   const mission = MISSIONS.find(m => m.id === player.currentMission);
   if (!mission) return null;
+  // Pour la mission libre, le joueur choisit en posant ses cartes : lui rappeler ce
+  // qu'il peut rejouer.
+  const replayable = replayableMissions(MISSIONS, player.completedMissions);
   return (
     <div style={{
       background: C.surface, borderRadius: 14, padding: '14px 16px',
@@ -244,6 +248,15 @@ const MissionPanel: React.FC<{ player: Player }> = ({ player }) => {
         <MissionTarget mission={mission} />
       </div>
       <div style={{ fontSize: 12, color: C.inkSoft, lineHeight: 1.4 }}>{mission.description}</div>
+
+      {isFreeChoice(mission.requirements) && (
+        <div style={{ marginTop: 8, fontSize: 12, color: C.inkSoft, lineHeight: 1.5 }}>
+          <span style={{ fontWeight: 700 }}>À rejouer : </span>
+          {replayable.length > 0
+            ? replayable.map(m => m.title).join(' · ')
+            : 'aucune mission réussie pour le moment'}
+        </div>
+      )}
     </div>
   );
 };
@@ -253,14 +266,16 @@ const DeckArea: React.FC<{
   deckCount: number;
   topDiscard: CardType | null;
   canDraw: boolean;
+  /** Le paquet peut être vide et pourtant piochable : la défausse le reforme. */
+  deckDrawable: boolean;
   onDrawDeck: () => void;
   onDrawDiscard: () => void;
-}> = ({ deckCount, topDiscard, canDraw, onDrawDeck, onDrawDiscard }) => (
+}> = ({ deckCount, topDiscard, canDraw, deckDrawable, onDrawDeck, onDrawDiscard }) => (
   <div style={{ display: 'flex', gap: 14, alignItems: 'center', justifyContent: 'center', padding: '8px 0' }}>
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-      <div onClick={canDraw && deckCount > 0 ? onDrawDeck : undefined} style={{
+      <div data-testid="deck-pile" onClick={canDraw && deckDrawable ? onDrawDeck : undefined} style={{
         position: 'relative',
-        cursor: canDraw && deckCount > 0 ? 'pointer' : 'default',
+        cursor: canDraw && deckDrawable ? 'pointer' : 'default',
         filter: canDraw ? 'none' : 'grayscale(0.4) brightness(0.7)',
       }}>
         <div style={{ position: 'absolute', top: 3, left: 3 }}><CardBack /></div>
@@ -589,6 +604,7 @@ const GameBoard: React.FC = () => {
           deckCount={gameState.deck.length}
           topDiscard={topDiscard}
           canDraw={isDisplayedTurn && !gameState.hasDrawnThisTurn && !gameState.isGameOver}
+          deckDrawable={gameState.deck.length > 0 || gameState.discardPile.length > 1}
           onDrawDeck={() => drawCard(false)}
           onDrawDiscard={() => drawCard(true)}
         />

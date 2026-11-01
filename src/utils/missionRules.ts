@@ -1,4 +1,5 @@
-import { CardValue, Combination, MissionRequirements, NormalCard } from '../types/game';
+import { CardValue, Combination, Mission, MissionRequirements, NormalCard } from '../types/game';
+import { MISSIONS } from '../data/missions';
 import { CARD_SUITS, CARD_VALUES, countJokers, getCardValueNumber, getValueFromNumber, normalCards, valuesMissingFrom } from './cards';
 
 /**
@@ -17,6 +18,22 @@ import { CARD_SUITS, CARD_VALUES, countJokers, getCardValueNumber, getValueFromN
  * passent tous deux par ici : il ne peut plus y avoir de désaccord entre les
  * cartes qu'on accepte de poser et les missions qu'on crédite.
  */
+
+/** La « mission libre » : rejouer une mission déjà réussie. */
+export const isFreeChoice = (requirements: MissionRequirements): boolean =>
+  requirements.specificRequirements === 'free_choice';
+
+/**
+ * Les missions qu'un joueur peut rejouer au titre de la mission libre : celles qu'il a
+ * déjà réussies, la mission libre elle-même exclue — elle ne se rejoue pas elle-même.
+ */
+export const replayableMissions = (
+  allMissions: Mission[],
+  completedMissions: number[]
+): Mission[] =>
+  allMissions.filter(mission =>
+    completedMissions.includes(mission.id) && !isFreeChoice(mission.requirements)
+  );
 
 const isRedCard = (card: NormalCard) => card.suit === 'hearts' || card.suit === 'diamonds';
 const isBlackCard = (card: NormalCard) => card.suit === 'spades' || card.suit === 'clubs';
@@ -93,9 +110,11 @@ export const combinationsSatisfyRequirements = (
 
   switch (requirements.specificRequirements) {
     case 'free_choice':
-      // Mission 12 : la sélection de la mission à rejouer n'existe pas encore,
-      // donc rien ne peut être présenté pour elle (voir validateMissionFromSelection).
-      return completedMissions.length > 0;
+      // Le joueur rejoue une mission déjà réussie, et il la choisit en posant ses
+      // cartes : la pose est valable dès qu'elle accomplit l'une d'elles.
+      return replayableMissions(MISSIONS, completedMissions).some(mission =>
+        combinationsSatisfyRequirements(combinations, mission.requirements, completedMissions)
+      );
 
     case '7_same_suit':
       // Les cartes réelles d'une couleur comptent où qu'elles soient posées, mais un

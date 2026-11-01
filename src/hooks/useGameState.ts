@@ -15,8 +15,10 @@ import { AIPlayer } from '../utils/aiPlayer';
 import {
   canAddToExistingCombination,
   isMissionCompleted,
-  pickRandomMissionId
+  pickRandomMissionId,
+  replenishDeck
 } from '../utils/gameLogic';
+import { isFreeChoice, replayableMissions } from '../utils/missionRules';
 
 const STORAGE_KEY = 'cirque-rummy-game-state';
 
@@ -124,16 +126,39 @@ export const useGameState = () => {
         return prev; // Return unchanged state
       }
 
+      const history: string[] = [];
       let drawnCard: Card | undefined;
+
       if (fromDiscard && newState.discardPile.length > 0) {
         newState.discardPile = [...newState.discardPile];
         drawnCard = newState.discardPile.pop()!;
-        newState.gameHistory.push(`${currentPlayer.name} pioche de la défausse`);
-      } else if (newState.deck.length > 0) {
+        history.push(`${currentPlayer.name} pioche de la défausse`);
+      } else {
+        // Paquet épuisé : la défausse est remélangée pour le reformer.
+        const replenished = replenishDeck(newState.deck, newState.discardPile);
+        if (replenished.deck !== newState.deck) {
+          newState.deck = replenished.deck;
+          newState.discardPile = replenished.discardPile;
+          history.push('🎪 La défausse est remélangée pour reformer la pioche');
+        }
+
+        if (newState.deck.length === 0) {
+          // Ni paquet ni défausse à remélanger : la manche ne peut plus avancer.
+          newState.gameHistory = [
+            ...newState.gameHistory,
+            ...history,
+            '🎪 Plus rien à piocher : la manche est rejouée'
+          ];
+          startNewRound(newState);
+          return newState;
+        }
+
         newState.deck = [...newState.deck];
         drawnCard = newState.deck.pop()!;
-        newState.gameHistory.push(`${currentPlayer.name} pioche du paquet`);
+        history.push(`${currentPlayer.name} pioche du paquet`);
       }
+
+      newState.gameHistory = [...newState.gameHistory, ...history];
 
       if (drawnCard) {
         const updatedPlayer = { ...currentPlayer, hand: [...currentPlayer.hand, drawnCard] };
@@ -263,9 +288,25 @@ export const useGameState = () => {
 
       if (cards.length !== cardIds.length) return prev;
 
-      // Validate cards against mission requirements using new logic
-      const validation = validateMissionFromSelection(cards, mission.requirements);
-      if (!validation.isValid) return prev;
+      // Pour la mission libre, le joueur choisit la mission à rejouer en posant ses
+      // cartes : on retient la première de ses missions réussies que la sélection
+      // accomplit.
+      const attempts = isFreeChoice(mission.requirements)
+        ? replayableMissions(MISSIONS, currentPlayer.completedMissions)
+        : [mission];
+
+      let validation: ReturnType<typeof validateMissionFromSelection> | undefined;
+      let replayed: Mission | undefined;
+      for (const attempt of attempts) {
+        const candidate = validateMissionFromSelection(cards, attempt.requirements);
+        if (candidate.isValid) {
+          validation = candidate;
+          replayed = attempt;
+          break;
+        }
+      }
+
+      if (!validation) return prev;
 
       // Remove cards from hand
       currentPlayer.hand = [...currentPlayer.hand];
@@ -297,7 +338,10 @@ export const useGameState = () => {
         description = `${sequenceCount} suite(s)`;
       }
 
-      newState.gameHistory.push(`${currentPlayer.name} présente ${description} pour la mission`);
+      const missionDesc = replayed && replayed.id !== mission.id
+        ? `pour la mission libre, en rejouant « ${replayed.title} »`
+        : 'pour la mission';
+      newState.gameHistory.push(`${currentPlayer.name} présente ${description} ${missionDesc}`);
 
       // La validation ci-dessus a vérifié la mission entière sur cette sélection :
       // c'est donc elle qui crédite la mission. Rejouer une seconde validation sur
