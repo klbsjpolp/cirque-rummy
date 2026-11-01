@@ -66,6 +66,12 @@ updates:
       # break the production build again.
       - dependency-name: "tailwindcss"
         update-types: ["version-update:semver-major"]
+      # typescript-eslint caps its typescript peer (currently <6.1.0), and
+      # because typescript shares a group with eslint, a too-new typescript
+      # bump blocks the whole lint toolchain PR on the strict peer check in CI.
+      # Raise this bound once typescript-eslint widens its peer range.
+      - dependency-name: "typescript"
+        versions: [">= 6.1"]
 
   - package-ecosystem: "github-actions"
     directory: "/"

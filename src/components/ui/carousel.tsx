@@ -109,6 +109,9 @@ const Carousel = React.forwardRef<
         return
       }
 
+      // Initial sync with Embla's external scroll state; later updates come
+      // from the subscriptions below.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       onSelect(api)
       api.on("reInit", onSelect)
       api.on("select", onSelect)
