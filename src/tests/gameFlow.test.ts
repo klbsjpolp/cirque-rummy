@@ -28,7 +28,8 @@ describe('Game Flow Mechanics', () => {
     cardsDrawnThisTurn: 0,
     hasDrawnThisTurn: false,
     mustDiscardToEndTurn: false,
-    lastDrawnCardId: null
+    lastDrawnCardId: null,
+    notice: null
   })
 
   describe('Game Initialization', () => {

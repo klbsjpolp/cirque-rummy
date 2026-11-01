@@ -74,6 +74,17 @@ export interface Player {
   missionCompletedThisRound: boolean;
 }
 
+/**
+ * Un avis au joueur : pourquoi sa dernière action a été refusée.
+ *
+ * Le numéro change à chaque avis, même quand le message se répète : c'est ce qui
+ * permet à l'interface de le montrer deux fois de suite.
+ */
+export interface GameNotice {
+  id: number;
+  message: string;
+}
+
 export interface GameState {
   players: Player[];
   currentPlayerIndex: number;
@@ -89,4 +100,6 @@ export interface GameState {
   hasDrawnThisTurn: boolean;
   mustDiscardToEndTurn: boolean;
   lastDrawnCardId: string | null;
+  /** Le dernier refus à montrer au joueur, ou `null` si la dernière action a abouti. */
+  notice: GameNotice | null;
 }

@@ -54,6 +54,7 @@ const state = (over: Partial<GameState> = {}): GameState => ({
   hasDrawnThisTurn: false,
   mustDiscardToEndTurn: false,
   lastDrawnCardId: null,
+  notice: null,
   ...over,
 });
 

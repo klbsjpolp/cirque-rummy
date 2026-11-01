@@ -198,6 +198,12 @@ src/
 - Chaque joueur voit sa mission actuelle
 - Alternance des tours
 
+### Accessibilité et retours
+- Les cartes, la pioche et la défausse sont de vrais boutons : tabulation, Entrée et
+  Espace suffisent pour jouer, et un lecteur d'écran annonce « roi de cœur,
+  sélectionnée » plutôt qu'un glyphe muet
+- Une action refusée dit pourquoi, à l'écran : plus d'écran figé sans explication
+
 ### Contre IA
 - L'IA joue automatiquement
 - La mission de l'IA n'est pas visible

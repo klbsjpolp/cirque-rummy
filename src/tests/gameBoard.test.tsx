@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { Toaster } from '../components/ui/sonner';
 import GameBoard from '../components/GameBoard';
 import { Card, CardSuit, CardValue } from '../types/game';
 
@@ -32,6 +33,7 @@ const seed = (missionCompletedThisRound: boolean) => {
     hasDrawnThisTurn: true,
     mustDiscardToEndTurn: true,
     lastDrawnCardId: null,
+    notice: null,
   }));
 };
 
@@ -60,5 +62,43 @@ describe('GameBoard', () => {
     const { container } = render(<GameBoard />);
 
     expect(container.textContent).toContain('Poser groupe');
+  });
+});
+
+describe('les piles se prennent au clavier', () => {
+  it('expose la pioche et la défausse comme des boutons nommés', () => {
+    seed(false);
+    render(<GameBoard />);
+
+    const deck = screen.getByRole('button', { name: /piocher au paquet/i });
+    const discard = screen.getByRole('button', { name: /piocher la carte visible/i });
+
+    expect(deck.tagName).toBe('BUTTON');
+    expect(discard.tagName).toBe('BUTTON');
+  });
+
+  it('désactive les piles quand la pioche du tour est déjà faite', () => {
+    // La partie semée a déjà pioché : les deux piles sont hors d'usage, et le disent
+    // au lieu de rester cliquables sans effet.
+    seed(false);
+    render(<GameBoard />);
+
+    expect(screen.getByTestId('deck-pile').hasAttribute('disabled')).toBe(true);
+    expect(screen.getByTestId('discard-pile').hasAttribute('disabled')).toBe(true);
+  });
+});
+
+describe('un refus se voit à l\'écran', () => {
+  it('affiche pourquoi la pose est refusée', async () => {
+    // Mission 1 (deux groupes de 3) avec un seul groupe sélectionné : la pose est
+    // refusée, et le joueur doit l'apprendre autrement qu'en voyant l'écran figé.
+    seed(false);
+    render(<><Toaster /><GameBoard /></>);
+
+    const cards = ['3 de pique', '3 de trèfle', '3 de cœur'];
+    cards.forEach(name => fireEvent.click(screen.getByRole('button', { name: new RegExp(name, 'i') })));
+    fireEvent.click(screen.getByRole('button', { name: /présenter mission/i }));
+
+    expect(await screen.findByText(/n'accomplit pas la mission/i)).toBeDefined();
   });
 });
